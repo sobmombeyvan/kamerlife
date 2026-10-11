@@ -5,7 +5,7 @@
       "root": ".",
       "framework": "vite"
     },
-    "playcanvas-v01": {
+    "playcanvas": {
       "root": "_backup/playcanvas-v0.1",
       "framework": "vite"
     }
