@@ -1,5 +1,5 @@
 import * as pc from 'playcanvas';
-import { box, createMesh, hexMaterial } from '../world/MeshFactory';
+import { box } from '../world/MeshFactory';
 import { FurnitureCatalog, type FurnitureType } from '../game/GameConfig';
 import { makeFurniture, getFurnitureType } from './FurnitureFactory';
 import { SaveManager } from '../save/SaveManager';
@@ -29,7 +29,7 @@ export class HouseManager {
 
   constructor(
     private readonly app: pc.AppBase,
-    private readonly collisions: CollisionWorld,
+    _collisions: CollisionWorld,
   ) {
     this.homeGroup = new pc.Entity('home-interior');
     this.homeGroup.setPosition(HOME_WORLD.x, 0, HOME_WORLD.z);
