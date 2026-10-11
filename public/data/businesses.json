@@ -1,0 +1,2832 @@
+{
+  "version": 1,
+  "currency": "FCFA",
+  "note": "Phase 1 data layer. Shops are placeable on the 2D map. Full interiors/payments are NOT implemented yet.",
+  "businesses": [
+    {
+      "id": "cv_santa_lucia",
+      "name": "Santa Lucia Grand Supermarket",
+      "category": "supermarket",
+      "districtId": "centre-ville",
+      "x": 36,
+      "z": 36,
+      "fictional": false,
+      "landmarkReal": false,
+      "signColor": "#1565c0",
+      "hours": {
+        "open": "08:00",
+        "close": "21:00",
+        "days": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "rice",
+          "name": "Riz 5kg",
+          "priceFcfa": 3600,
+          "category": "supermarket"
+        },
+        {
+          "id": "oil",
+          "name": "Huile 1L",
+          "priceFcfa": 1300,
+          "category": "supermarket"
+        },
+        {
+          "id": "water",
+          "name": "Eau pack",
+          "priceFcfa": 2500,
+          "category": "supermarket"
+        },
+        {
+          "id": "bread",
+          "name": "Pain",
+          "priceFcfa": 350,
+          "category": "supermarket"
+        }
+      ],
+      "interaction": "menu",
+      "notes": "Real brand name; game-world placement — not a verified real branch. Exterior in 3D; checkout not implemented."
+    },
+    {
+      "id": "cv_mfoundi_mall",
+      "name": "Mfoundi Mall",
+      "category": "other",
+      "districtId": "centre-ville",
+      "x": -108,
+      "z": 180,
+      "fictional": true,
+      "signColor": "#546e7a",
+      "hours": {
+        "open": "09:00",
+        "close": "21:00",
+        "days": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "directory",
+          "name": "Plan du mall (fictif)",
+          "priceFcfa": 0,
+          "category": "other"
+        }
+      ],
+      "interaction": "menu",
+      "notes": "Major landmark exterior in 3D. Store modules listed — interiors not playable yet."
+    },
+    {
+      "id": "cv_travelpoint",
+      "name": "TravelPoint Cameroon",
+      "category": "admin",
+      "districtId": "centre-ville",
+      "x": -36,
+      "z": -36,
+      "fictional": true,
+      "signColor": "#37474f",
+      "hours": {
+        "open": "08:00",
+        "close": "18:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "ticket_bus",
+          "name": "Billet bus fictif YDE→DLA",
+          "priceFcfa": 8500,
+          "category": "admin"
+        },
+        {
+          "id": "ticket_flight",
+          "name": "Billet avion fictif",
+          "priceFcfa": 85000,
+          "category": "admin"
+        }
+      ],
+      "interaction": "menu",
+      "notes": "Booking UI not implemented. Tickets are fictional game data only."
+    },
+    {
+      "id": "ns_airport",
+      "name": "Aéroport International de Yaoundé-Nsimalen",
+      "category": "other",
+      "districtId": "centre-ville",
+      "x": 216,
+      "z": 1080,
+      "fictional": false,
+      "landmarkReal": true,
+      "signColor": "#546e7a",
+      "hours": {
+        "open": "00:00",
+        "close": "23:59",
+        "days": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "taxi_drop",
+          "name": "Course taxi (tarif indicatif)",
+          "priceFcfa": 5000,
+          "category": "other"
+        }
+      ],
+      "interaction": "menu",
+      "notes": "Landmark extérieur 3D Phase 1. Pas d’enregistrement ni vols simulés complets."
+    },
+    {
+      "id": "cv_carrefour",
+      "name": "Carrefour du Centre",
+      "category": "supermarket",
+      "districtId": "centre-ville",
+      "x": 120,
+      "z": -80,
+      "fictional": true,
+      "signColor": "#1565c0",
+      "hours": {
+        "open": "08:00",
+        "close": "21:00",
+        "days": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "rice",
+          "name": "Riz 5kg",
+          "priceFcfa": 3500,
+          "category": "supermarket"
+        },
+        {
+          "id": "oil",
+          "name": "Huile 1L",
+          "priceFcfa": 1200,
+          "category": "supermarket"
+        },
+        {
+          "id": "soap",
+          "name": "Savon",
+          "priceFcfa": 500,
+          "category": "supermarket"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "cv_citymarket",
+      "name": "CityMarket Yaoundé",
+      "category": "supermarket",
+      "districtId": "centre-ville",
+      "x": -140,
+      "z": 60,
+      "fictional": true,
+      "signColor": "#1565c0",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "water",
+          "name": "Eau 1.5L",
+          "priceFcfa": 400,
+          "category": "supermarket"
+        },
+        {
+          "id": "milk",
+          "name": "Lait",
+          "priceFcfa": 900,
+          "category": "supermarket"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "cv_mboa_bank",
+      "name": "Mboa Bank",
+      "category": "bank",
+      "districtId": "centre-ville",
+      "x": 80,
+      "z": 40,
+      "fictional": true,
+      "signColor": "#283593",
+      "hours": {
+        "open": "08:00",
+        "close": "16:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "fee",
+          "name": "Frais retrait",
+          "priceFcfa": 200,
+          "category": "bank"
+        }
+      ],
+      "interaction": "atm"
+    },
+    {
+      "id": "cv_horizon_bank",
+      "name": "Horizon Bank",
+      "category": "bank",
+      "districtId": "centre-ville",
+      "x": -60,
+      "z": -100,
+      "fictional": true,
+      "signColor": "#283593",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "fee",
+          "name": "Frais transfert",
+          "priceFcfa": 300,
+          "category": "bank"
+        }
+      ],
+      "interaction": "counter"
+    },
+    {
+      "id": "cv_cafe_central",
+      "name": "Café Central",
+      "category": "cafe",
+      "districtId": "centre-ville",
+      "x": 40,
+      "z": 120,
+      "fictional": true,
+      "signColor": "#6d4c41",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "coffee",
+          "name": "Café",
+          "priceFcfa": 800,
+          "category": "cafe"
+        },
+        {
+          "id": "croissant",
+          "name": "Croissant",
+          "priceFcfa": 500,
+          "category": "cafe"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "cv_hotel_centre",
+      "name": "Hôtel du Centre",
+      "category": "hotel",
+      "districtId": "centre-ville",
+      "x": 200,
+      "z": 40,
+      "fictional": true,
+      "signColor": "#5e35b1",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "room",
+          "name": "Chambre nuit",
+          "priceFcfa": 25000,
+          "category": "hotel"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "cv_pharmacie_centre",
+      "name": "Pharmacie du Centre",
+      "category": "pharmacy",
+      "districtId": "centre-ville",
+      "x": -100,
+      "z": -40,
+      "fictional": true,
+      "signColor": "#00897b",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "paracetamol",
+          "name": "Paracétamol (fictif)",
+          "priceFcfa": 1500,
+          "category": "pharmacy"
+        }
+      ],
+      "interaction": "menu",
+      "notes": "Items fictifs — pas de conseil médical réel."
+    },
+    {
+      "id": "cv_poste",
+      "name": "Bureau de Poste",
+      "category": "admin",
+      "districtId": "centre-ville",
+      "x": 160,
+      "z": -160,
+      "fictional": false,
+      "landmarkReal": false,
+      "signColor": "#37474f",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "stamp",
+          "name": "Affranchissement",
+          "priceFcfa": 250,
+          "category": "admin"
+        }
+      ],
+      "interaction": "menu",
+      "notes": "Bureau de jeu inspiré — placement provisoire."
+    },
+    {
+      "id": "cv_cinema",
+      "name": "Cinema Central",
+      "category": "nightlife",
+      "districtId": "centre-ville",
+      "x": -180,
+      "z": 140,
+      "fictional": true,
+      "signColor": "#6a1b9a",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "ticket",
+          "name": "Ticket film",
+          "priceFcfa": 3000,
+          "category": "nightlife"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "cv_rich_telecom",
+      "name": "Rich Telecom",
+      "category": "electronics",
+      "districtId": "centre-ville",
+      "x": 220,
+      "z": -40,
+      "fictional": true,
+      "signColor": "#0277bd",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "phone_case",
+          "name": "Coque téléphone",
+          "priceFcfa": 2500,
+          "category": "electronics"
+        },
+        {
+          "id": "earbuds",
+          "name": "Écouteurs",
+          "priceFcfa": 8000,
+          "category": "electronics"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "ba_terrasse",
+      "name": "La Terrasse de Bastos",
+      "category": "restaurant",
+      "districtId": "bastos",
+      "x": 280,
+      "z": -2600,
+      "fictional": true,
+      "signColor": "#c62828",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "ndole",
+          "name": "Ndolé",
+          "priceFcfa": 4500,
+          "category": "restaurant"
+        },
+        {
+          "id": "poulet_dg",
+          "name": "Poulet DG",
+          "priceFcfa": 5500,
+          "category": "restaurant"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "ba_coffee",
+      "name": "Coffee House Bastos",
+      "category": "cafe",
+      "districtId": "bastos",
+      "x": 340,
+      "z": -2500,
+      "fictional": true,
+      "signColor": "#6d4c41",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "latte",
+          "name": "Café latte",
+          "priceFcfa": 1500,
+          "category": "cafe"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "ba_elegance",
+      "name": "Élégance Bastos",
+      "category": "fashion",
+      "districtId": "bastos",
+      "x": 200,
+      "z": -2700,
+      "fictional": true,
+      "signColor": "#ad1457",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "dress",
+          "name": "Robe",
+          "priceFcfa": 18000,
+          "category": "fashion"
+        },
+        {
+          "id": "shirt",
+          "name": "Chemise",
+          "priceFcfa": 12000,
+          "category": "fashion"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "ba_rooftop",
+      "name": "Le Rooftop de Bastos",
+      "category": "nightlife",
+      "districtId": "bastos",
+      "x": 380,
+      "z": -2400,
+      "fictional": true,
+      "signColor": "#6a1b9a",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "cocktail",
+          "name": "Boisson",
+          "priceFcfa": 3500,
+          "category": "nightlife"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "ba_residence",
+      "name": "Résidence Bastos",
+      "category": "hotel",
+      "districtId": "bastos",
+      "x": 160,
+      "z": -2550,
+      "fictional": true,
+      "signColor": "#5e35b1",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "suite",
+          "name": "Suite",
+          "priceFcfa": 45000,
+          "category": "hotel"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "ba_clinique",
+      "name": "Clinique de Bastos",
+      "category": "clinic",
+      "districtId": "bastos",
+      "x": 420,
+      "z": -2750,
+      "fictional": true,
+      "signColor": "#e53935",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "consult",
+          "name": "Consultation (fictive)",
+          "priceFcfa": 10000,
+          "category": "clinic"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "mo_marche",
+      "name": "Marché Mokolo",
+      "category": "market",
+      "districtId": "mokolo",
+      "x": -600,
+      "z": -400,
+      "fictional": true,
+      "signColor": "#ff8f00",
+      "hours": {
+        "open": "06:00",
+        "close": "18:00",
+        "days": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "tomato",
+          "name": "Tomates kg",
+          "priceFcfa": 800,
+          "category": "market"
+        },
+        {
+          "id": "fabric",
+          "name": "Pagne",
+          "priceFcfa": 5000,
+          "category": "market"
+        }
+      ],
+      "interaction": "stall",
+      "notes": "Inspiré du marché réel — placement provisoire."
+    },
+    {
+      "id": "mo_street",
+      "name": "Street Food 237",
+      "category": "fastfood",
+      "districtId": "mokolo",
+      "x": -520,
+      "z": -360,
+      "fictional": true,
+      "signColor": "#ef6c00",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "soya",
+          "name": "Soya",
+          "priceFcfa": 500,
+          "category": "fastfood"
+        },
+        {
+          "id": "plantain",
+          "name": "Plantain",
+          "priceFcfa": 700,
+          "category": "fastfood"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "mo_mobile",
+      "name": "Mobile 237",
+      "category": "electronics",
+      "districtId": "mokolo",
+      "x": -680,
+      "z": -320,
+      "fictional": true,
+      "signColor": "#0277bd",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "charger",
+          "name": "Chargeur",
+          "priceFcfa": 3500,
+          "category": "electronics"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "mo_boutique",
+      "name": "Boutique du Marché",
+      "category": "fashion",
+      "districtId": "mokolo",
+      "x": -560,
+      "z": -480,
+      "fictional": true,
+      "signColor": "#ad1457",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "tee",
+          "name": "T-shirt",
+          "priceFcfa": 4000,
+          "category": "fashion"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "md_superu",
+      "name": "Super U Express",
+      "category": "supermarket",
+      "districtId": "mendong",
+      "x": -420,
+      "z": -4500,
+      "fictional": true,
+      "signColor": "#1565c0",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "rice",
+          "name": "Riz 5kg",
+          "priceFcfa": 3400,
+          "category": "supermarket"
+        },
+        {
+          "id": "beans",
+          "name": "Haricots",
+          "priceFcfa": 1500,
+          "category": "supermarket"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "md_chez_mama",
+      "name": "Chez Mama Épicerie",
+      "category": "grocery",
+      "districtId": "mendong",
+      "x": -360,
+      "z": -4400,
+      "fictional": true,
+      "signColor": "#2e7d32",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "bread",
+          "name": "Pain",
+          "priceFcfa": 300,
+          "category": "grocery"
+        },
+        {
+          "id": "eggs",
+          "name": "Œufs x6",
+          "priceFcfa": 1200,
+          "category": "grocery"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "md_garage",
+      "name": "Garage du Centre",
+      "category": "garage",
+      "districtId": "mendong",
+      "x": -480,
+      "z": -4600,
+      "fictional": true,
+      "signColor": "#455a64",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "oil_change",
+          "name": "Vidange",
+          "priceFcfa": 15000,
+          "category": "garage"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "md_snack",
+      "name": "Snack du Quartier",
+      "category": "fastfood",
+      "districtId": "mendong",
+      "x": -300,
+      "z": -4550,
+      "fictional": true,
+      "signColor": "#ef6c00",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "brochette",
+          "name": "Brochette",
+          "priceFcfa": 600,
+          "category": "fastfood"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "md_ecole",
+      "name": "École Les Petits Génies",
+      "category": "education",
+      "districtId": "mendong",
+      "x": -500,
+      "z": -4700,
+      "fictional": true,
+      "signColor": "#1565c0",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "fees",
+          "name": "Frais inscription (fictifs)",
+          "priceFcfa": 50000,
+          "category": "education"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "by_marche",
+      "name": "Marché de Biyem-Assi",
+      "category": "market",
+      "districtId": "biyem-assi",
+      "x": -3200,
+      "z": 400,
+      "fictional": true,
+      "signColor": "#ff8f00",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "veg",
+          "name": "Légumes",
+          "priceFcfa": 1000,
+          "category": "market"
+        }
+      ],
+      "interaction": "stall"
+    },
+    {
+      "id": "by_miniprix",
+      "name": "Mini Prix",
+      "category": "supermarket",
+      "districtId": "biyem-assi",
+      "x": -3100,
+      "z": 480,
+      "fictional": true,
+      "signColor": "#1565c0",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "soap",
+          "name": "Savon",
+          "priceFcfa": 450,
+          "category": "supermarket"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "by_sante",
+      "name": "Santé Plus",
+      "category": "pharmacy",
+      "districtId": "biyem-assi",
+      "x": -3300,
+      "z": 340,
+      "fictional": true,
+      "signColor": "#00897b",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "vitamins",
+          "name": "Vitamines (fictif)",
+          "priceFcfa": 2500,
+          "category": "pharmacy"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "by_marmite",
+      "name": "La Marmite Camerounaise",
+      "category": "restaurant",
+      "districtId": "biyem-assi",
+      "x": -3050,
+      "z": 360,
+      "fictional": true,
+      "signColor": "#c62828",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "eru",
+          "name": "Eru",
+          "priceFcfa": 4000,
+          "category": "restaurant"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "mv_fuel",
+      "name": "Station Centrale",
+      "category": "fuel",
+      "districtId": "mvan",
+      "x": -2400,
+      "z": -2200,
+      "fictional": true,
+      "signColor": "#fbc02d",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "fuel_l",
+          "name": "Essence 1L (virtuel)",
+          "priceFcfa": 800,
+          "category": "fuel"
+        }
+      ],
+      "interaction": "counter"
+    },
+    {
+      "id": "mv_petro",
+      "name": "Petro 237",
+      "category": "fuel",
+      "districtId": "mvan",
+      "x": -2300,
+      "z": -2100,
+      "fictional": true,
+      "signColor": "#fbc02d",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "fuel_l",
+          "name": "Gasoil 1L (virtuel)",
+          "priceFcfa": 750,
+          "category": "fuel"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "mv_courier",
+      "name": "Express Livraison 237",
+      "category": "logistics",
+      "districtId": "mvan",
+      "x": -2500,
+      "z": -2300,
+      "fictional": true,
+      "signColor": "#37474f",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "delivery",
+          "name": "Course locale",
+          "priceFcfa": 1500,
+          "category": "logistics"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "mv_mecano",
+      "name": "Mécano Express",
+      "category": "garage",
+      "districtId": "mvan",
+      "x": -2350,
+      "z": -2350,
+      "fictional": true,
+      "signColor": "#455a64",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "repair",
+          "name": "Réparation",
+          "priceFcfa": 20000,
+          "category": "garage"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "mv_marche",
+      "name": "Marché de Mvan",
+      "category": "market",
+      "districtId": "mvan",
+      "x": -2450,
+      "z": -2150,
+      "fictional": true,
+      "signColor": "#ff8f00",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "fish",
+          "name": "Poisson",
+          "priceFcfa": 2500,
+          "category": "market"
+        }
+      ],
+      "interaction": "stall"
+    },
+    {
+      "id": "es_prox",
+      "name": "Proxi Market",
+      "category": "grocery",
+      "districtId": "essos",
+      "x": 3400,
+      "z": 600,
+      "fictional": true,
+      "signColor": "#2e7d32",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "water",
+          "name": "Eau",
+          "priceFcfa": 350,
+          "category": "grocery"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "es_pause",
+      "name": "Pause Café",
+      "category": "cafe",
+      "districtId": "essos",
+      "x": 3500,
+      "z": 520,
+      "fictional": true,
+      "signColor": "#6d4c41",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "tea",
+          "name": "Thé",
+          "priceFcfa": 600,
+          "category": "cafe"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "es_pharma",
+      "name": "Pharmacie Express",
+      "category": "pharmacy",
+      "districtId": "essos",
+      "x": 3300,
+      "z": 680,
+      "fictional": true,
+      "signColor": "#00897b",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "bandage",
+          "name": "Pansement (fictif)",
+          "priceFcfa": 800,
+          "category": "pharmacy"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "es_yaounde_burger",
+      "name": "Yaoundé Burger",
+      "category": "fastfood",
+      "districtId": "essos",
+      "x": 3550,
+      "z": 640,
+      "fictional": true,
+      "signColor": "#ef6c00",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "burger",
+          "name": "Burger",
+          "priceFcfa": 2500,
+          "category": "fastfood"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "nl_citypay",
+      "name": "CityPay",
+      "category": "bank",
+      "districtId": "nlongkak",
+      "x": 2200,
+      "z": -400,
+      "fictional": true,
+      "signColor": "#283593",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "fee",
+          "name": "Frais",
+          "priceFcfa": 200,
+          "category": "bank"
+        }
+      ],
+      "interaction": "atm"
+    },
+    {
+      "id": "nl_grill",
+      "name": "Grill House 237",
+      "category": "restaurant",
+      "districtId": "nlongkak",
+      "x": 2300,
+      "z": -320,
+      "fictional": true,
+      "signColor": "#c62828",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "braise",
+          "name": "Poisson braisé",
+          "priceFcfa": 5000,
+          "category": "restaurant"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "nl_smarttech",
+      "name": "SmartTech Yaoundé",
+      "category": "electronics",
+      "districtId": "nlongkak",
+      "x": 2100,
+      "z": -480,
+      "fictional": true,
+      "signColor": "#0277bd",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "usb",
+          "name": "Clé USB",
+          "priceFcfa": 4000,
+          "category": "electronics"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "ng_clinique",
+      "name": "Clinique Mboa",
+      "category": "clinic",
+      "districtId": "ngousso",
+      "x": 3000,
+      "z": 2400,
+      "fictional": true,
+      "signColor": "#e53935",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "consult",
+          "name": "Consultation (fictive)",
+          "priceFcfa": 8000,
+          "category": "clinic"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "ng_pharma",
+      "name": "Pharmacie du Soleil",
+      "category": "pharmacy",
+      "districtId": "ngousso",
+      "x": 3100,
+      "z": 2320,
+      "fictional": true,
+      "signColor": "#00897b",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "syrup",
+          "name": "Sirop (fictif)",
+          "priceFcfa": 3000,
+          "category": "pharmacy"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "ng_saveurs",
+      "name": "Saveurs du Mfoundi",
+      "category": "restaurant",
+      "districtId": "ngousso",
+      "x": 2900,
+      "z": 2480,
+      "fictional": true,
+      "signColor": "#c62828",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "ndole",
+          "name": "Ndolé",
+          "priceFcfa": 4000,
+          "category": "restaurant"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "et_admin",
+      "name": "Centre Administratif",
+      "category": "admin",
+      "districtId": "etoudi",
+      "x": 1600,
+      "z": -3600,
+      "fictional": true,
+      "signColor": "#37474f",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "form",
+          "name": "Dossier (fictif)",
+          "priceFcfa": 1000,
+          "category": "admin"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "et_epicerie",
+      "name": "Bon Panier",
+      "category": "grocery",
+      "districtId": "etoudi",
+      "x": 1500,
+      "z": -3500,
+      "fictional": true,
+      "signColor": "#2e7d32",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "oil",
+          "name": "Huile",
+          "priceFcfa": 1100,
+          "category": "grocery"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "et_palais_note",
+      "name": "Palais de l’Unité (repère)",
+      "category": "admin",
+      "districtId": "etoudi",
+      "x": 1700,
+      "z": -3700,
+      "fictional": false,
+      "landmarkReal": true,
+      "signColor": "#37474f",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [],
+      "interaction": "menu",
+      "notes": "Landmark réel — interaction limitée Phase 1."
+    },
+    {
+      "id": "nk_uy1",
+      "name": "Université de Yaoundé I (repère)",
+      "category": "education",
+      "districtId": "ngoa-ekelle",
+      "x": 2000,
+      "z": 800,
+      "fictional": false,
+      "landmarkReal": true,
+      "signColor": "#1565c0",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [],
+      "interaction": "menu",
+      "notes": "Landmark réel — placement provisoire."
+    },
+    {
+      "id": "nk_snack",
+      "name": "Snack Campus",
+      "category": "fastfood",
+      "districtId": "ngoa-ekelle",
+      "x": 2100,
+      "z": 860,
+      "fictional": true,
+      "signColor": "#ef6c00",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "rice_plate",
+          "name": "Riz sauce",
+          "priceFcfa": 1000,
+          "category": "fastfood"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "nk_print",
+      "name": "Académie Numérique",
+      "category": "education",
+      "districtId": "ngoa-ekelle",
+      "x": 1920,
+      "z": 740,
+      "fictional": true,
+      "signColor": "#1565c0",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "print",
+          "name": "Impression page",
+          "priceFcfa": 50,
+          "category": "education"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "nk_bread",
+      "name": "Bread & More",
+      "category": "bakery",
+      "districtId": "ngoa-ekelle",
+      "x": 2180,
+      "z": 780,
+      "fictional": true,
+      "signColor": "#f9a825",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "baguette",
+          "name": "Baguette",
+          "priceFcfa": 250,
+          "category": "bakery"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "ma_marche",
+      "name": "Marché de Mvog-Ada",
+      "category": "market",
+      "districtId": "mvog-ada",
+      "x": 260,
+      "z": -280,
+      "fictional": true,
+      "signColor": "#ff8f00",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "cloth",
+          "name": "Tissu",
+          "priceFcfa": 3000,
+          "category": "market"
+        }
+      ],
+      "interaction": "stall"
+    },
+    {
+      "id": "ma_poisson",
+      "name": "Le Poisson Braise",
+      "category": "restaurant",
+      "districtId": "mvog-ada",
+      "x": 320,
+      "z": -240,
+      "fictional": true,
+      "signColor": "#c62828",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "fish",
+          "name": "Poisson",
+          "priceFcfa": 4500,
+          "category": "restaurant"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "ma_moto",
+      "name": "Moto Livraison",
+      "category": "logistics",
+      "districtId": "mvog-ada",
+      "x": 200,
+      "z": -320,
+      "fictional": true,
+      "signColor": "#37474f",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "run",
+          "name": "Course moto",
+          "priceFcfa": 1000,
+          "category": "logistics"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "me_institut",
+      "name": "Institut Horizon",
+      "category": "education",
+      "districtId": "melen",
+      "x": -220,
+      "z": 360,
+      "fictional": true,
+      "signColor": "#1565c0",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "course",
+          "name": "Cours (fictif)",
+          "priceFcfa": 15000,
+          "category": "education"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "me_auberge",
+      "name": "Auberge du Quartier",
+      "category": "hotel",
+      "districtId": "melen",
+      "x": -160,
+      "z": 400,
+      "fictional": true,
+      "signColor": "#5e35b1",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "night",
+          "name": "Nuit",
+          "priceFcfa": 8000,
+          "category": "hotel"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "me_fresh",
+      "name": "Fresh & Local",
+      "category": "grocery",
+      "districtId": "melen",
+      "x": -280,
+      "z": 320,
+      "fictional": true,
+      "signColor": "#2e7d32",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "fruit",
+          "name": "Fruits",
+          "priceFcfa": 1200,
+          "category": "grocery"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "si_buildpro",
+      "name": "BuildPro Cameroon",
+      "category": "furniture",
+      "districtId": "simbock",
+      "x": -600,
+      "z": 700,
+      "fictional": true,
+      "signColor": "#5d4037",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "cement",
+          "name": "Ciment (virtuel)",
+          "priceFcfa": 5500,
+          "category": "furniture"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "si_marche_express",
+      "name": "Marché Express",
+      "category": "supermarket",
+      "districtId": "simbock",
+      "x": -540,
+      "z": 760,
+      "fictional": true,
+      "signColor": "#1565c0",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "water",
+          "name": "Eau pack",
+          "priceFcfa": 2000,
+          "category": "supermarket"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "si_auto",
+      "name": "Auto Service Yaoundé",
+      "category": "garage",
+      "districtId": "simbock",
+      "x": -660,
+      "z": 640,
+      "fictional": true,
+      "signColor": "#455a64",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "tires",
+          "name": "Pneus",
+          "priceFcfa": 45000,
+          "category": "garage"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "od_mboa_energy",
+      "name": "Mboa Energy",
+      "category": "fuel",
+      "districtId": "odza",
+      "x": 3800,
+      "z": -2800,
+      "fictional": true,
+      "signColor": "#fbc02d",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "fuel_l",
+          "name": "Essence 1L",
+          "priceFcfa": 800,
+          "category": "fuel"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "od_city_lodge",
+      "name": "City Lodge 237",
+      "category": "hotel",
+      "districtId": "odza",
+      "x": 3900,
+      "z": -2700,
+      "fictional": true,
+      "signColor": "#5e35b1",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "room",
+          "name": "Chambre",
+          "priceFcfa": 18000,
+          "category": "hotel"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "od_marche",
+      "name": "Marché d’Odza",
+      "category": "market",
+      "districtId": "odza",
+      "x": 3700,
+      "z": -2900,
+      "fictional": true,
+      "signColor": "#ff8f00",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "veg",
+          "name": "Légumes",
+          "priceFcfa": 900,
+          "category": "market"
+        }
+      ],
+      "interaction": "stall"
+    },
+    {
+      "id": "od_pizza",
+      "name": "Pizza Avenue",
+      "category": "fastfood",
+      "districtId": "odza",
+      "x": 4000,
+      "z": -2750,
+      "fictional": true,
+      "signColor": "#ef6c00",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "pizza",
+          "name": "Pizza",
+          "priceFcfa": 4000,
+          "category": "fastfood"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "ek_marche",
+      "name": "Marché du Quartier",
+      "category": "market",
+      "districtId": "ekounou",
+      "x": 540,
+      "z": -320,
+      "fictional": true,
+      "signColor": "#ff8f00",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "meat",
+          "name": "Viande",
+          "priceFcfa": 3500,
+          "category": "market"
+        }
+      ],
+      "interaction": "stall"
+    },
+    {
+      "id": "ek_afro",
+      "name": "Afro Chic",
+      "category": "fashion",
+      "districtId": "ekounou",
+      "x": 600,
+      "z": -280,
+      "fictional": true,
+      "signColor": "#ad1457",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "sneakers",
+          "name": "Baskets",
+          "priceFcfa": 22000,
+          "category": "fashion"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "ek_chicken",
+      "name": "Chicken Express 237",
+      "category": "fastfood",
+      "districtId": "ekounou",
+      "x": 500,
+      "z": -360,
+      "fictional": true,
+      "signColor": "#ef6c00",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "chicken",
+          "name": "Poulet",
+          "priceFcfa": 2000,
+          "category": "fastfood"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "ns_parcel",
+      "name": "Parcel Express",
+      "category": "logistics",
+      "districtId": "nsam",
+      "x": 400,
+      "z": 180,
+      "fictional": true,
+      "signColor": "#37474f",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "parcel",
+          "name": "Colis",
+          "priceFcfa": 2000,
+          "category": "logistics"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "ns_pneus",
+      "name": "Pneus & Services",
+      "category": "garage",
+      "districtId": "nsam",
+      "x": 460,
+      "z": 220,
+      "fictional": true,
+      "signColor": "#455a64",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "align",
+          "name": "Géométrie",
+          "priceFcfa": 10000,
+          "category": "garage"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "ns_materiaux",
+      "name": "Matériaux Express",
+      "category": "furniture",
+      "districtId": "nsam",
+      "x": 360,
+      "z": 140,
+      "fictional": true,
+      "signColor": "#5d4037",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "brick",
+          "name": "Briques (virtuel)",
+          "priceFcfa": 150,
+          "category": "furniture"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "em_lycee",
+      "name": "Lycée du Mfoundi",
+      "category": "education",
+      "districtId": "emana",
+      "x": -160,
+      "z": -700,
+      "fictional": true,
+      "signColor": "#1565c0",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "fees",
+          "name": "Frais (fictifs)",
+          "priceFcfa": 40000,
+          "category": "education"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "em_express_fuel",
+      "name": "Express Fuel",
+      "category": "fuel",
+      "districtId": "emana",
+      "x": -100,
+      "z": -640,
+      "fictional": true,
+      "signColor": "#fbc02d",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "fuel_l",
+          "name": "Essence",
+          "priceFcfa": 800,
+          "category": "fuel"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "em_douceurs",
+      "name": "Douceurs de Yaoundé",
+      "category": "bakery",
+      "districtId": "emana",
+      "x": -200,
+      "z": -740,
+      "fictional": true,
+      "signColor": "#f9a825",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "cake",
+          "name": "Gâteau",
+          "priceFcfa": 3500,
+          "category": "bakery"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "nk2_marche",
+      "name": "Marché local Nkolbisson",
+      "category": "market",
+      "districtId": "nkolbisson",
+      "x": -680,
+      "z": 160,
+      "fictional": true,
+      "signColor": "#ff8f00",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "plantain",
+          "name": "Plantain",
+          "priceFcfa": 600,
+          "category": "market"
+        }
+      ],
+      "interaction": "stall"
+    },
+    {
+      "id": "nk2_epicerie",
+      "name": "Yaoundé Market",
+      "category": "grocery",
+      "districtId": "nkolbisson",
+      "x": -620,
+      "z": 200,
+      "fictional": true,
+      "signColor": "#2e7d32",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "salt",
+          "name": "Sel",
+          "priceFcfa": 200,
+          "category": "grocery"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "aw_jardin",
+      "name": "Le Jardin Tropical",
+      "category": "restaurant",
+      "districtId": "awae",
+      "x": 820,
+      "z": 40,
+      "fictional": true,
+      "signColor": "#c62828",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "salad",
+          "name": "Salade",
+          "priceFcfa": 2500,
+          "category": "restaurant"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "aw_glacier",
+      "name": "Glacier Tropical",
+      "category": "cafe",
+      "districtId": "awae",
+      "x": 880,
+      "z": 80,
+      "fictional": true,
+      "signColor": "#6d4c41",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "ice",
+          "name": "Glace",
+          "priceFcfa": 1000,
+          "category": "cafe"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "aw_prox",
+      "name": "Chez Mama Épicerie Awaé",
+      "category": "grocery",
+      "districtId": "awae",
+      "x": 760,
+      "z": 20,
+      "fictional": true,
+      "signColor": "#2e7d32",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "milk",
+          "name": "Lait",
+          "priceFcfa": 900,
+          "category": "grocery"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "cv_one_shot",
+      "name": "One Shot Lounge & Grill",
+      "category": "nightlife",
+      "districtId": "centre-ville",
+      "x": -40,
+      "z": 180,
+      "fictional": true,
+      "signColor": "#6a1b9a",
+      "hours": {
+        "open": "17:00",
+        "close": "02:00",
+        "days": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "grill",
+          "name": "Grillade",
+          "priceFcfa": 6000,
+          "category": "nightlife"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "ba_ndole_royal",
+      "name": "Le Ndolé Royal",
+      "category": "restaurant",
+      "districtId": "bastos",
+      "x": 260,
+      "z": -2480,
+      "fictional": true,
+      "signColor": "#c62828",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "ndole",
+          "name": "Ndolé Royal",
+          "priceFcfa": 6000,
+          "category": "restaurant"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "cv_maison_deco",
+      "name": "Maison & Déco 237",
+      "category": "furniture",
+      "districtId": "centre-ville",
+      "x": 100,
+      "z": 200,
+      "fictional": true,
+      "signColor": "#5d4037",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "sofa",
+          "name": "Canapé",
+          "priceFcfa": 85000,
+          "category": "furniture"
+        },
+        {
+          "id": "bed",
+          "name": "Lit",
+          "priceFcfa": 120000,
+          "category": "furniture"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "cv_meuble",
+      "name": "Meubles du Centre",
+      "category": "furniture",
+      "districtId": "centre-ville",
+      "x": -200,
+      "z": -120,
+      "fictional": true,
+      "signColor": "#5d4037",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "table",
+          "name": "Table",
+          "priceFcfa": 35000,
+          "category": "furniture"
+        }
+      ],
+      "interaction": "menu"
+    },
+    {
+      "id": "cv_hopital",
+      "name": "Hôpital Central de Yaoundé (repère)",
+      "category": "hospital",
+      "districtId": "centre-ville",
+      "x": -240,
+      "z": -200,
+      "fictional": false,
+      "landmarkReal": true,
+      "signColor": "#b71c1c",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [],
+      "interaction": "menu",
+      "notes": "Landmark réel représenté respectueusement — pas de gameplay médical réel."
+    },
+    {
+      "id": "cv_mboa_courier",
+      "name": "Mboa Courier",
+      "category": "logistics",
+      "districtId": "centre-ville",
+      "x": 280,
+      "z": 100,
+      "fictional": true,
+      "signColor": "#37474f",
+      "hours": {
+        "open": "08:00",
+        "close": "20:00",
+        "days": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "products": [
+        {
+          "id": "express",
+          "name": "Livraison express",
+          "priceFcfa": 2500,
+          "category": "logistics"
+        }
+      ],
+      "interaction": "menu"
+    }
+  ]
+}

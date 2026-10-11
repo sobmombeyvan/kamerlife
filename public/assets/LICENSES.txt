@@ -1,0 +1,13 @@
+LIFE CITY: YAOUNDÉ — asset notes
+
+Procedural surface textures (plaster, concrete, asphalt, sidewalk, earth, grass, metal, wood, roof)
+are generated at runtime in src/render/surfaces.ts. They are original to this project.
+
+No third-party character, building, or vehicle GLB is bundled yet.
+Optional files may be added later under:
+  characters/ animations/ buildings/ roads/ vehicles/
+  furniture/ vegetation/ textures/ audio/ ui/
+
+Only add GLB/GLTF files whose license allows use in this game, and append the source and license below.
+
+src/assets/loadModel.ts returns null when a file is missing. The game keeps its procedural fallback.
