@@ -1,6 +1,8 @@
 import { COMFORT_NEEDS, type NeedsState } from '../sim/PlayerNeeds';
 import type { RelationEntry } from '../sim/SocialMemory';
 import type { GraphicsQuality } from '../config/GraphicsConfig';
+import type { PlayerLook } from '../player/PlayerLook';
+import type { SavedOutfit } from '../player/Wardrobe';
 
 const KEY = 'lifecity-gamesave-v2';
 const LEGACY_KEY = 'lifecity-gamesave-v1';
@@ -17,6 +19,10 @@ export type GameSaveData = {
   quality: GraphicsQuality;
   relations: Record<string, RelationEntry>;
   jobCooldownUntil: number;
+  look?: PlayerLook;
+  wardrobe?: SavedOutfit[];
+  /** Fashion items bought with FCFA. Starter items are implied. */
+  fashionOwned?: string[];
   savedAt: number;
 };
 
@@ -54,6 +60,11 @@ export function loadGameSave(): GameSaveData | null {
       quality: (data.quality as GraphicsQuality) ?? 'medium',
       relations,
       jobCooldownUntil: Number(data.jobCooldownUntil ?? -999),
+      look: data.look && typeof data.look === 'object' ? (data.look as PlayerLook) : undefined,
+      wardrobe: Array.isArray(data.wardrobe) ? (data.wardrobe as SavedOutfit[]) : undefined,
+      fashionOwned: Array.isArray(data.fashionOwned)
+        ? (data.fashionOwned as unknown[]).filter((id): id is string => typeof id === 'string')
+        : undefined,
       savedAt: Number(data.savedAt ?? Date.now()),
     };
   } catch {

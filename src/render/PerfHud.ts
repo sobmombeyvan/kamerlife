@@ -55,6 +55,10 @@ export class PerfHud {
     if (this.visible) this.render();
   }
 
+  get last(): PerfSample | null {
+    return this.latest;
+  }
+
   dispose(): void {
     window.removeEventListener('keydown', this.onKey);
     this.root.remove();

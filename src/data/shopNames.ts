@@ -16,17 +16,17 @@ export const LANDMARK_SIGN_TEXT: Record<string, { title: string; subtitle?: stri
 };
 
 const SHOP_NAMES = [
-  'Santa Lucia Express',
-  'DOVV Market',
+  'Alimentation La Paix',
+  'Mini-Market Le Bon Prix',
   'Boutique Nouvelle',
   'Cash & Carry 237',
-  'Super U Quartier',
+  'Supérette du Quartier',
   'Pharmacie du Centre',
-  'Total Energies',
-  'MRS Station',
-  'MTN Shop',
-  'Orange Store',
-  'Camtel Point',
+  'Dépôt Boissons Mvog',
+  'Atelier Couture Mama Rose',
+  'Call-Box Chez Paul',
+  'Phone Shop Le Génie',
+  'Recharges & Crédit 237',
   'Boulangerie Moderne',
   'Restaurant Sawa',
   'Snack Capita',
@@ -42,15 +42,15 @@ const SHOP_NAMES = [
   'Poissonnerie Mfoundi',
   'Pagnes & Wax',
   'Alpha Motors Parts',
-  'Jetour Showroom',
-  'Prado Service',
-  'Tesla Point Yaoundé',
+  'Garage Le Mécano',
+  'Vulcanisation 24h',
+  'Pièces Auto Mfandena',
   'Clinique La Grâce',
   'Optique Vision',
-  'Banque Atlantique',
-  'Afriland First',
-  'Express Union',
-  'Western Union',
+  'Banque du Plateau',
+  'Microfinance Espoir',
+  'Transfert Rapide 237',
+  'Bureau de Change Mvan',
   'Hotel Prestige',
   'Motel Le Relais',
   'École Les Bambins',
@@ -58,7 +58,7 @@ const SHOP_NAMES = [
   'Marché Vivrier',
 ];
 
-const FUEL_NAMES = ['Total Energies', 'MRS', 'Tradex', 'Oil Libya', 'Camrail Fuel', 'Station Centre'];
+const FUEL_NAMES = ['Kamer Petrol', 'Sanaga Énergie', 'Mefou Carburants', 'Nyong Oil', 'Station Centre', 'Petro Mvog'];
 const CLINIC_NAMES = ['Pharmacie du Peuple', 'Clinique La Grâce', 'Centre Médical Espoir', 'Pharmacie Santa', 'Polyclinique Biyem'];
 const MARKET_NAMES = ['Marché Vivrier', 'Étals du Quartier', 'Marché Central Mini', 'Hall des Vivres', 'Boutiques Mokolo Style'];
 

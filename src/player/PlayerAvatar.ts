@@ -8,8 +8,8 @@ function cloth(color: number): THREE.MeshStandardMaterial {
 }
 
 /**
- * Higher-detail procedural player — Cameroonian urban look.
- * Articulated limbs for a more realistic walk; GLB can replace later.
+ * Procedural fallback used until the rigged GLB loads, and if that file is missing.
+ * It is a block figure, not a scanned human.
  */
 export function createPlayerAvatar(): THREE.Group {
   const root = new THREE.Group();
@@ -175,7 +175,6 @@ export function createPlayerAvatar(): THREE.Group {
   root.userData.body = body;
   root.userData.head = head;
   root.userData.procedural = true;
-  root.userData.realistic = true;
   root.userData.shirtMats = [shirt, shirtDark];
   root.userData.pantsMats = [pants, pantsSeam];
   ensureOutfitApplied(root);

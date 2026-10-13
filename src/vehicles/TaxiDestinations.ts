@@ -21,7 +21,7 @@ export type TaxiStand = {
 export function buildTaxiDestinations(): TaxiDestination[] {
   const dests: TaxiDestination[] = [
     { id: 'centre', name: 'Centre-ville (place)', x: 22, z: 28, fareFcfa: 500 },
-    { id: 'home', name: 'Maison du Joueur', x: 36, z: 120, fareFcfa: 500 },
+    { id: 'home', name: 'Maison du Joueur', x: 31, z: 128, fareFcfa: 500 },
   ];
 
   for (const f of LANDMARK_FOOTPRINTS) {

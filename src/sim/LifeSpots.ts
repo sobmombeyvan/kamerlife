@@ -54,8 +54,8 @@ export const PHONE_OFFERS: ShopOffer[] = [
 /** Job sites near major landmarks — timed work for FCFA. */
 export const LIFE_SPOTS: LifeSpot[] = [
   // Near player house / Nlongkak
-  { id: 'kiosk-home', kind: 'food', name: 'Kiosque Nlongkak', x: 20, z: 120, radius: 6 },
-  { id: 'drink-home', kind: 'drink', name: 'Boissons du coin', x: 48, z: 90, radius: 5.5 },
+  { id: 'kiosk-home', kind: 'food', name: 'Kiosque Nlongkak', x: 24, z: 131, radius: 4.5 },
+  { id: 'drink-home', kind: 'drink', name: 'Boissons du coin', x: 60, z: 116, radius: 4.5 },
   // Santa Lucia
   { id: 'shop-santa', kind: 'shop', name: 'Santa Lucia · Courses', x: 108, z: 120, radius: 8 },
   // Mokolo market vibe

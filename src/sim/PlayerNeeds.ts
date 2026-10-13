@@ -11,6 +11,19 @@ export type NeedsState = {
 
 export type MoodId = 'great' | 'good' | 'ok' | 'bad' | 'critical';
 
+export type NeedActivity =
+  | 'sleep'
+  | 'cook'
+  | 'tv'
+  | 'wash'
+  | 'clothes'
+  | 'work'
+  | 'chat'
+  | 'toilet'
+  | 'basin'
+  | 'drink'
+  | 'rest';
+
 /** Comfortable start. After 3 days of play these stay in the okay range. */
 export const COMFORT_NEEDS: NeedsState = {
   health: 100,
@@ -131,8 +144,21 @@ export class PlayerNeeds {
     return null;
   }
 
-  applyActivity(kind: 'sleep' | 'cook' | 'tv' | 'wash' | 'clothes' | 'work' | 'chat'): void {
-    if (kind === 'sleep') {
+  applyActivity(kind: NeedActivity): void {
+    if (kind === 'toilet') {
+      this.hygiene = clamp(this.hygiene + 15, 0, 100);
+      this.health = clamp(this.health + 2, 0, 100);
+    } else if (kind === 'basin') {
+      this.hygiene = clamp(this.hygiene + 20, 0, 100);
+      this.fun = clamp(this.fun + 2, 0, 100);
+    } else if (kind === 'drink') {
+      this.thirst = clamp(this.thirst + 40, 0, 100);
+      this.energy = clamp(this.energy + 3, 0, 100);
+    } else if (kind === 'rest') {
+      this.energy = clamp(this.energy + 10, 0, 100);
+      this.stamina = clamp(this.stamina + 20, 0, 100);
+      this.fun = clamp(this.fun + 4, 0, 100);
+    } else if (kind === 'sleep') {
       this.energy = 100;
       this.stamina = 100;
       this.health = clamp(this.health + 18, 0, 100);

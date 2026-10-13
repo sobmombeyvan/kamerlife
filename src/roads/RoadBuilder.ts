@@ -8,6 +8,7 @@ import {
   HIGHWAY_NS_X,
   HIGHWAY_WIDTH,
   ROAD_GRID,
+  gridAxes,
   isHighwayAxisX,
   isHighwayAxisZ,
   roadHalfAtX,
@@ -210,12 +211,12 @@ export function buildLogicalCityRoads(): RoadSegmentDef[] {
   pushSplit('hwy-ns', 'z', HIGHWAY_NS_X, HIGHWAY_WIDTH);
   pushSplit('hwy-ew', 'x', HIGHWAY_EW_Z, HIGHWAY_WIDTH);
 
-  for (let v = -half; v <= half; v += ROAD_GRID) {
+  for (const v of gridAxes()) {
     if (isHighwayAxisX(v)) continue;
     const avenue = Math.abs(v) % (ROAD_GRID * 2) === 0;
     pushSplit(`ns-x${v}`, 'z', v, avenue ? 16 : 11);
   }
-  for (let v = -half; v <= half; v += ROAD_GRID) {
+  for (const v of gridAxes()) {
     if (isHighwayAxisZ(v)) continue;
     const avenue = Math.abs(v) % (ROAD_GRID * 2) === 0;
     pushSplit(`ew-z${v}`, 'x', v, avenue ? 16 : 11);

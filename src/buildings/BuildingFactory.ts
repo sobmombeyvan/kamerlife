@@ -5,6 +5,12 @@ import { shopNameFor } from '../data/shopNames';
 import { addTextSign } from '../landmarks/signage';
 import { surfaceMat } from '../render/surfaces';
 import { bakeAndMerge } from '../render/mergeStatic';
+import { kitSink } from '../city/KitSink';
+import { STOREY, type Arch, type BuildingPlan } from '../city/BuildingKit';
+import { registerPlan } from '../city/CityPlan';
+import { occupyFootprint } from '../city/Occupancy';
+import { overlapsRoad } from '../world/RoadClearance';
+import { ROAD_GRID } from '../roads/CityRoadPlan';
 
 export type BuildingKind =
   | 'house'
@@ -42,8 +48,77 @@ geoBox.userData.shared = true;
 const geoCone = new THREE.ConeGeometry(0.72, 1.2, 4);
 geoCone.userData.shared = true;
 
+const KIND_ARCH: Record<BuildingKind, Arch> = {
+  house: 'house',
+  shop: 'shoprow',
+  flat: 'apartment',
+  landmark: 'civic',
+  market: 'market',
+  villa: 'villa',
+  fuel: 'fuel',
+  clinic: 'clinic',
+  office: 'office',
+  warehouse: 'warehouse',
+};
+
+/** Face the nearest street when the caller did not choose an orientation. */
+function yawTowardRoad(x: number, z: number): number {
+  const g = ROAD_GRID;
+  const ax = Math.round(x / g) * g;
+  const az = Math.round(z / g) * g;
+  if (Math.abs(x - ax) < Math.abs(z - az)) return ax > x ? Math.PI / 2 : -Math.PI / 2;
+  return az > z ? 0 : Math.PI;
+}
+
+function routeToKit(spec: BuildingSpec, sink: NonNullable<ReturnType<typeof kitSink>>): THREE.Group {
+  const marker = new THREE.Group();
+  marker.name = spec.id;
+  marker.position.set(spec.x, 0, spec.z);
+  marker.userData = { type: 'building', procedural: true, kit: true, ...spec };
+  const yaw = spec.yaw ?? yawTowardRoad(spec.x, spec.z);
+  const c = Math.abs(Math.cos(yaw));
+  const s = Math.abs(Math.sin(yaw));
+  const ahw = (spec.width / 2) * c + (spec.depth / 2) * s;
+  const ahd = (spec.width / 2) * s + (spec.depth / 2) * c;
+  if (overlapsRoad(spec.x, spec.z, ahw - 1.6, ahd - 1.6)) return marker;
+  let arch = KIND_ARCH[spec.kind];
+  if (spec.kind === 'landmark') {
+    if (/^École|Lycée|Université|Collège/i.test(spec.name)) arch = 'school';
+    else if (/culte|Église|Paroisse|Cathédrale|Temple/i.test(spec.name)) arch = 'church';
+  }
+  const seed = (Math.abs(Math.floor(spec.x * 13.1 + spec.z * 7.7)) >>> 0) + 1;
+  const floors = arch === 'market' || arch === 'fuel' ? 1 : Math.max(1, Math.round(spec.height / STOREY));
+  const name =
+    spec.kind === 'shop' || spec.kind === 'market' || spec.kind === 'fuel' || spec.kind === 'clinic' ? shopNameFor(spec.kind, spec.x, spec.z) : spec.name;
+  const plan: BuildingPlan = {
+    id: 1_000_000 + seed,
+    arch,
+    x: spec.x,
+    z: spec.z,
+    yaw,
+    w: spec.width,
+    d: spec.depth,
+    floors,
+    seed,
+    paint: spec.color,
+    trim: 0x8a8378,
+    roof: [0x9aa3a8, 0x8a4b2f, 0x9c3326, 0x2f6b4a][seed % 4]!,
+    name,
+    shopGround: spec.kind === 'flat' && seed % 3 !== 0,
+    apron: 1.5,
+    old: false,
+  };
+  sink.plan.addExtra(plan);
+  if (spec.collide !== false) registerPlan(sink.collisions, plan);
+  else occupyFootprint(plan.x, plan.z, plan.w / 2, plan.d / 2, plan.yaw, 'extra');
+  if (name) marker.userData.displayName = name;
+  return marker;
+}
+
 /** Procedural Yaoundé-style building with kind-specific details. */
 export function createBuilding(spec: BuildingSpec, collisions?: CollisionSystem): THREE.Group {
+  const sink = kitSink();
+  if (sink) return routeToKit(spec, sink);
   const group = new THREE.Group();
   group.name = spec.id;
   group.position.set(spec.x, 0, spec.z);

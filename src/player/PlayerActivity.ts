@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { HOME_FLOOR_TOP } from '../home/homeLayout';
 
 export type ActivityKind = 'sleep' | 'cook' | 'tv' | 'wash' | 'clothes' | 'work';
 
@@ -74,7 +75,7 @@ export class PlayerActivity {
     this.faceYaw = faceYaw;
     player.position.x = snapX;
     player.position.z = snapZ;
-    player.position.y = 0;
+    player.position.y = HOME_FLOOR_TOP;
     player.rotation.y = faceYaw;
   }
 
@@ -90,6 +91,19 @@ export class PlayerActivity {
     player.position.x = THREE.MathUtils.lerp(player.position.x, this.snapX, a);
     player.position.z = THREE.MathUtils.lerp(player.position.z, this.snapZ, a);
     player.rotation.y = this.faceYaw;
+
+    const animator = player.userData.animator as { setActivity: (kind: string | null) => void; setLocomotion: (moving: boolean, running: boolean, dt: number, speed: number) => void } | undefined;
+    if (animator) {
+      animator.setActivity(this.kind);
+      animator.setLocomotion(false, false, dt, 0);
+      if (this.kind === 'sleep') {
+        // Rig has no lying clip: tip the standing idle onto its back, head toward the pillows.
+        player.rotation.order = 'YXZ';
+        player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, -Math.PI / 2, a);
+        player.position.y = THREE.MathUtils.lerp(player.position.y, HOME_FLOOR_TOP + 0.5, a);
+      }
+      return;
+    }
 
     switch (this.kind) {
       case 'sleep':
@@ -115,9 +129,11 @@ export class PlayerActivity {
 
   stop(player: THREE.Object3D): void {
     if (!this.kind) return;
+    const animator = player.userData.animator as { setActivity: (kind: string | null) => void } | undefined;
+    animator?.setActivity(null);
     const L = limbs(player);
     // Stand upright again near activity spot (don't teleport across room)
-    player.position.y = 0;
+    player.position.y = HOME_FLOOR_TOP;
     player.rotation.x = 0;
     player.rotation.z = 0;
     if (L.body) {

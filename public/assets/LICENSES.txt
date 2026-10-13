@@ -3,7 +3,25 @@ LIFE CITY: YAOUNDÉ — asset notes
 Procedural surface textures (plaster, concrete, asphalt, sidewalk, earth, grass, metal, wood, roof)
 are generated at runtime in src/render/surfaces.ts. They are original to this project.
 
-No third-party character, building, or vehicle GLB is bundled yet.
+characters/harper-locomotion.glb
+  Harper, a rigged adult woman in a tailored suit, with idle, walk, jog and run clips.
+  Source: Innerscene 3D Parts Library, adapted from MakeHuman/MPFB CC0 body, rig and skin.
+  https://www.innerscene.com/tools/library/3d-parts/locomotion-collection-harper-3d-person-animated-797e1e2a
+  License: CC0-1.0 (public domain).
+
+characters/maya-locomotion.glb
+  Maya, a rigged adult woman in a satin top and tailored trousers, with the same clip set.
+  Source: Innerscene 3D Parts Library, adapted from MakeHuman/MPFB CC0 body, rig and skin.
+  https://www.innerscene.com/tools/library/3d-parts/locomotion-collection-maya-3d-person-animated-1499b2fd
+  License: CC0-1.0 (public domain).
+
+characters/sam-locomotion.glb
+  Sam, a rigged adult man in a casual shirt and trousers, with the same clip set.
+  Source: Innerscene 3D Parts Library, adapted from MakeHuman/MPFB CC0 body, rig and skin.
+  https://www.innerscene.com/tools/library/3d-parts/locomotion-collection-sam-3d-person-animated-dc23800f
+  License: CC0-1.0 (public domain).
+
+No third-party building or vehicle GLB is bundled yet.
 Optional files may be added later under:
   characters/ animations/ buildings/ roads/ vehicles/
   furniture/ vegetation/ textures/ audio/ ui/

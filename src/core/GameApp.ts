@@ -4,6 +4,34 @@ import { Input } from './Input';
 import { CollisionSystem } from '../world/CollisionSystem';
 import { buildBootstrapWorld } from '../world/BootstrapWorld';
 import { createPlayerAvatar } from '../player/PlayerAvatar';
+import { applyAppearance, mountRiggedPlayer } from '../player/PlayerRig';
+import { CharacterStudio } from '../player/CharacterStudio';
+import {
+  applyPreset,
+  chooseLook,
+  loadLook,
+  OUTFITS,
+  randomizeLook,
+  resetLook,
+  saveLook,
+  SLOT_FIELDS,
+  unownedAccessories,
+  withoutUnowned,
+  type PlayerLook,
+} from '../player/PlayerLook';
+import { accessoryById } from '../player/fashion/catalog';
+import { grantItem, isOwned, ownedItems, replaceOwned } from '../player/fashion/inventory';
+import {
+  addOutfit,
+  deleteOutfit,
+  duplicateOutfit,
+  loadWardrobe,
+  outfitById,
+  renameOutfit,
+  replaceWardrobe,
+  toggleFavoriteOutfit,
+} from '../player/Wardrobe';
+import type { LookHandlers } from '../ui/Hud';
 import { PlayerController } from '../player/PlayerController';
 import { ThirdPersonCamera } from '../camera/ThirdPersonCamera';
 import { AerialCamera } from '../camera/AerialCamera';
@@ -18,6 +46,7 @@ import { nearestLandmark } from '../landmarks/LandmarkSites';
 import {
   isInsidePlayerHouse,
   setHomeInteriorMode,
+  refreshHomeInteriorLook,
   PLAYER_HOUSE,
 } from '../landmarks/PlayerHouse';
 import { TrafficSystem } from '../vehicles/TrafficSystem';
@@ -27,31 +56,44 @@ import { estimateFare, type TaxiDestination } from '../vehicles/TaxiDestinations
 import { GameAudio } from '../audio/GameAudio';
 import {
   applyHomeDecor,
+  FURN_LABELS,
   loadHomeDecor,
   purchaseDecorItem,
+  resetFurnitureLayout,
+  restoreFurniture,
+  storeFurniture,
   purchaseFloorPaint,
   purchaseWallPaint,
+  saveHomeDecor,
+  type FurnPose,
   type HomeDecorState,
 } from '../home/HomeDecor';
+import { FurnitureEditor } from '../home/FurnitureEditor';
 import {
   getHomeSpots,
   isHomeDoorOpen,
   nearestHomeSpot,
   nearOutsideDoor,
+  syncHomeSpotsToFurniture,
   runHomeAction,
   tipForSpot,
   type HomeSpot,
 } from '../home/HomeInteract';
+import { HOME_FLOOR_TOP } from '../home/homeLayout';
 import { PlayerActivity } from '../player/PlayerActivity';
 import { PhoneUI } from '../ui/PhoneUI';
 import { PauseMenu } from '../ui/PauseMenu';
 import { DialogueUI, dialogueForRole } from '../ui/DialogueUI';
 import { GameClock } from '../sim/GameClock';
-import { PlayerNeeds } from '../sim/PlayerNeeds';
+import { PlayerNeeds, type NeedActivity } from '../sim/PlayerNeeds';
 import { loadGameSave, writeGameSave } from '../save/GameSave';
-import { GraphicsConfig, applyQuality, saveGraphicsSettings, type GraphicsQuality } from '../config/GraphicsConfig';
+import { GraphicsConfig, applyQuality } from '../config/GraphicsConfig';
 import { PerfHud } from '../render/PerfHud';
+import { DensityOverlay } from '../ui/DensityOverlay';
 import { CityDistanceCull } from '../world/CityDistanceCull';
+import type { CityChunks } from '../city/CityChunks';
+import type { CityPlan } from '../city/CityPlan';
+import { tickSignals } from '../city/signals';
 import { SocialMemory } from '../sim/SocialMemory';
 import {
   nearestLifeSpot,
@@ -60,6 +102,9 @@ import {
   type LifeSpot,
   type ShopOffer,
 } from '../sim/LifeSpots';
+
+/** Vehicles kept around the player at traffic density ×1. */
+const TRAFFIC_BASE = 80;
 
 export class GameApp {
   private engine!: Engine;
@@ -74,11 +119,15 @@ export class GameApp {
   private dialogue!: DialogueUI;
   private pedestrians!: PedestrianSystem;
   private traffic!: TrafficSystem;
+  private readonly trafficObstacles = [{ x: 0, z: 0, r: 0.5 }];
+  /** DEV: camera pinned by __shot until __unfreeze. */
+  private devPose: { x: number; z: number; h: number; pitch: number; yaw: number } | null = null;
   private taxis!: TaxiSystem;
   private parked!: ParkedCarSystem;
   private cityRoot!: THREE.Group;
   private houseRoot: THREE.Group | null = null;
   private homeSpots: HomeSpot[] = [];
+  private furniture!: FurnitureEditor;
   private activity = new PlayerActivity();
   private clock = new GameClock();
   private needs = new PlayerNeeds();
@@ -89,7 +138,8 @@ export class GameApp {
   private running = false;
   private wasInsideHome = false;
   private homeBusy = 0;
-  private pendingActivity: 'sleep' | 'cook' | 'tv' | 'wash' | 'clothes' | 'work' | null = null;
+  private pendingActivity: NeedActivity | null = null;
+  private busyLabel: string | null = null;
   private lastJobPay = 0;
   private homeDecor: HomeDecorState = loadHomeDecor();
   private talkingNpc: THREE.Group | null = null;
@@ -97,11 +147,15 @@ export class GameApp {
   /** Real timestamp (ms) of last finished job — cooldown independent of clock. */
   private lastJobAt = 0;
   private fpsWarnTimer = 0;
+  private fpsLowStreak = 0;
   private fpsAutoDropped = false;
   private dayNightAcc = 0;
   private autoSaveAcc = 0;
   private cityCull = new CityDistanceCull();
+  private chunks!: CityChunks;
+  private lastVegetation = 1;
   private perf!: PerfHud;
+  private density!: DensityOverlay;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -112,26 +166,39 @@ export class GameApp {
     this.engine = new Engine(this.canvas);
     this.input = new Input(this.canvas);
     this.cityRoot = buildBootstrapWorld(this.engine.scene, this.collisions);
+    this.chunks = this.cityRoot.userData.chunks as CityChunks;
     this.houseRoot = this.cityRoot.getObjectByName('landmark-player-house') as THREE.Group | null;
     this.homeSpots = getHomeSpots(PLAYER_HOUSE.cx, PLAYER_HOUSE.cz);
-    const anchors = (this.cityRoot.userData.landmarkAnchors ?? []) as Array<{
-      x: number;
-      z: number;
-      landmarkId: string;
-    }>;
-
+    if (this.houseRoot) syncHomeSpotsToFurniture(this.homeSpots, this.houseRoot);
+    this.furniture = new FurnitureEditor(
+      this.canvas,
+      this.engine.camera,
+      this.collisions,
+      () => this.houseRoot,
+      (id, pose, commit) => this.onFurnitureMoved(id, pose, commit),
+    );
+    this.furniture.onRejected = () => {
+      this.hud.setTip('Pas de place ici (mur, porte ou autre meuble) — le meuble revient');
+      this.audio.playUi();
+    };
+    this.furniture.onRemove = (id) => this.storeFurnitureItem(id);
     const npcDens = 1.15 * GraphicsConfig.npcDensity;
-    const trafficCount = Math.round(55 * GraphicsConfig.trafficDensity);
-    this.pedestrians = new PedestrianSystem(this.engine.scene, anchors, npcDens);
+    const trafficCount = Math.round(TRAFFIC_BASE * GraphicsConfig.trafficDensity);
+    const plan = this.cityRoot.userData.plan as CityPlan;
+    this.pedestrians = new PedestrianSystem(this.engine.scene, npcDens, (x, z) => plan.zoneAt(x, z));
+    this.density = new DensityOverlay(this.uiRoot, plan);
     this.traffic = new TrafficSystem(this.engine.scene, trafficCount);
+    this.traffic.setObstacles(this.trafficObstacles);
     this.taxis = new TaxiSystem(this.engine.scene);
     this.parked = new ParkedCarSystem(this.engine.scene, this.collisions);
     this.parked.collectFrom(this.cityRoot);
 
     const avatar = createPlayerAvatar();
     this.engine.scene.add(avatar);
+    void mountRiggedPlayer(avatar, this.engine.renderer);
 
     this.cameraRig = new ThirdPersonCamera(this.engine.camera, this.input);
+    this.cameraRig.setCollisions(this.collisions);
     this.aerial = new AerialCamera(this.engine.camera, this.engine.scene, this.input);
     this.player = new PlayerController(avatar, this.input, this.cameraRig, this.collisions);
     avatar.rotation.y = 0;
@@ -163,8 +230,10 @@ export class GameApp {
       this.hud.setMuted(muted);
     });
     this.hud.onOpenDecor(() => this.openDecorShop());
+    this.hud.onMoveFurniture(() => this.toggleFurniture());
     this.hud.onOpenPhone(() => this.togglePhone());
     this.hud.onOpenPause(() => this.togglePause());
+    this.hud.onOpenLook(() => this.toggleCharacterLook());
     this.audio.init();
 
     if (this.houseRoot && isInsidePlayerHouse(this.player.object.position.x, this.player.object.position.z)) {
@@ -174,6 +243,9 @@ export class GameApp {
 
     this.hud.notify(`Vie Sims · mange, dors, travaille, socialise`);
     this.hud.setMission('Satisfais tes besoins · gagne des FCFA');
+    this.chunks.warm(this.player.object.position.x, this.player.object.position.z);
+    this.lastVegetation = GraphicsConfig.vegetationDensity;
+    if (import.meta.env.DEV) this.installDevHooks();
     this.running = true;
     this.loop();
   }
@@ -209,7 +281,7 @@ export class GameApp {
         if (kind === 'sleep') {
           this.needs.applyActivity('sleep');
           this.clock.syncFromYaounde();
-          this.engine.applyDayNight(this.clock.sunFactor, this.clock.weather);
+          this.refreshDayNight();
           this.hud.notify(`Réveil · ${this.clock.label} (Yaoundé)`);
           this.hud.setTip('Repos restauré — heure réelle Yaoundé');
         } else if (kind === 'work') {
@@ -219,7 +291,7 @@ export class GameApp {
           this.lastJobAt = Date.now();
           this.hud.setMoney(this.money);
           this.clock.syncFromYaounde();
-          this.engine.applyDayNight(this.clock.sunFactor, this.clock.weather);
+          this.refreshDayNight();
           this.hud.notify(`+${pay.toLocaleString('fr-FR')} FCFA · fin de service`);
           this.hud.setTip('Travail terminé — tu as gagné de l’argent');
         } else if (kind) {
@@ -228,29 +300,38 @@ export class GameApp {
           this.hud.setTip('Terminé — tu peux bouger');
         }
         this.pendingActivity = null;
+        this.busyLabel = null;
         this.hud.setNeeds(this.needs.snapshot(), this.needs.moodLabel());
       }
     }
 
     this.clock.update(dt);
     this.dayNightAcc += dt;
-    if (this.dayNightAcc > 0.5 && !this.wasInsideHome && !this.aerial.active) {
+    if (
+      this.dayNightAcc > 0.5 &&
+      !this.wasInsideHome &&
+      !this.aerial.active &&
+      !this.hud.isLookPanelOpen()
+    ) {
       this.dayNightAcc = 0;
-      this.engine.applyDayNight(this.clock.sunFactor, this.clock.weather);
+      this.engine.applyDayNight(this.clock.sunFactor, this.clock.weather, this.clock.hourFloat);
     }
     this.hud.setClock(this.clock.label, this.clock.weatherLabel);
 
     if (this.input.consumePhoneToggle()) this.togglePhone();
+    if (this.input.consumeLookToggle()) this.toggleCharacterLook();
     if (this.input.consumePauseToggle()) this.togglePause();
 
     const uiBlocking =
       this.hud.isTaxiMenuOpen() ||
       this.hud.isDecorShopOpen() ||
       this.hud.isShopMenuOpen() ||
+      this.hud.isLookPanelOpen() ||
       this.cityMap.isOpen() ||
       this.phone.isOpen() ||
       this.pauseMenu.isOpen() ||
       this.dialogue.isOpen();
+    this.input.consumeFurnitureToggle();
     const driving = this.parked.driving;
     const busy = this.homeBusy > 0;
 
@@ -262,7 +343,35 @@ export class GameApp {
     } else {
       this.hud.setAerialMode(false);
 
-      if (driving && !uiBlocking) {
+      if (this.hud.isLookPanelOpen() && !ride.riding) {
+        this.hud.setPrompt(null);
+        const animator = this.player.object.userData.animator as
+          | {
+              setLocomotion: (moving: boolean, running: boolean, dt: number, speed: number) => void;
+              setActivity: (kind: string | null) => void;
+            }
+          | undefined;
+        if (this.creatorTurn > 0) {
+          this.creatorTurn = Math.max(0, this.creatorTurn - dt);
+          this.player.object.rotation.y += dt * 1.2;
+          if (this.creatorTurn === 0) this.creatorPose = 'idle';
+        }
+        const moving = this.creatorPose === 'walk' || this.creatorPose === 'run';
+        const running = this.creatorPose === 'run';
+        if (this.creatorPose === 'sit') animator?.setActivity('tv');
+        animator?.setLocomotion(moving, running, dt, running ? 4.5 : moving ? 1.7 : 0);
+        const look = this.input.consumeLook();
+        this.cameraRig.setCreatorFocus(this.hud.lookCamera());
+        this.cameraRig.updateCreator(
+          this.player.object,
+          dt,
+          look.dx,
+          look.dy,
+          this.input.consumeZoom(),
+          this.creatorFaceHeight(),
+        );
+        this.studio.follow(this.player.object.position);
+      } else if (driving && !uiBlocking) {
         const car = this.parked.update(dt, this.input, this.player.object);
         if (car) this.cameraRig.update(car, dt, { distance: 11, lookHeight: 1.2 });
         this.handleVehicleInteract();
@@ -270,10 +379,12 @@ export class GameApp {
         this.hud.setDistrict(`Au volant · ${carLabel}`);
         this.hud.setTip('WASD conduire · Shift turbo · E sortir');
       } else if (!ride.riding && !this.editor.isActive() && !uiBlocking) {
+        const onHomeFloor = isInsidePlayerHouse(p.x, p.z);
         if (!busy) {
           this.player.update(dt, {
             speedMul: this.needs.moveMultiplier(),
             canRun: this.needs.canRun(),
+            groundY: onHomeFloor ? HOME_FLOOR_TOP : 0,
           });
         }
         this.needs.update(dt, this.player.moving, this.player.running, busy);
@@ -285,7 +396,7 @@ export class GameApp {
         if (inside && !this.wasInsideHome) {
           this.enterHomeMode();
           this.audio.playUi();
-          this.hud.setTip('Chez toi — approche lit / cuisine / TV / douche / armoire · E');
+          this.hud.setTip('Vue du haut — maintiens le clic sur un meuble et glisse-le');
         } else if (!inside && this.wasInsideHome) {
           this.exitHomeMode();
           this.hud.setTip('Dehors — ta Jetour est dans l’allée · E pour conduire');
@@ -297,9 +408,11 @@ export class GameApp {
           dt,
           inside
             ? {
-                distance: busy && this.activity.kind === 'sleep' ? 11 : 15,
-                lookHeight: busy && this.activity.kind === 'sleep' ? 0.9 : 0.55,
+                distance: busy && this.activity.kind === 'sleep' ? 17 : this.furniture.enabled ? 20 : 17,
+                lookHeight: 0.35,
                 isometric: true,
+                focusX: PLAYER_HOUSE.cx,
+                focusZ: PLAYER_HOUSE.cz,
               }
             : undefined,
         );
@@ -333,15 +446,19 @@ export class GameApp {
             clothes: 'Change d’habits…',
             work: 'Travaille…',
           };
-          this.hud.setTip(labels[k] ?? '…');
+          this.hud.setTip(this.busyLabel ?? labels[k] ?? '…');
+          this.hud.setPrompt(null);
+        } else if (inside && this.furniture.isCarrying && !uiBlocking) {
+          this.hud.setDistrict(PLAYER_HOUSE.name);
+          this.hud.setTip('Glisse le meuble · lâche pour le poser · R tourne · Suppr range');
           this.hud.setPrompt(null);
         } else if (inside && spot && !uiBlocking) {
           this.hud.setDistrict(PLAYER_HOUSE.name);
-          this.hud.setTip(tipForSpot(spot, doorOpen));
+          this.hud.setTip(`${tipForSpot(spot, doorOpen)} · maintiens un meuble pour le glisser`);
           this.hud.setPrompt(`<kbd>E</kbd> ${spot.label}`);
         } else if (inside && !uiBlocking) {
           this.hud.setDistrict(PLAYER_HOUSE.name);
-          this.hud.setTip('Lit · cuisine · TV · douche · armoire · porte · Déco');
+          this.hud.setTip('Vue du haut — maintiens le clic sur un meuble et glisse-le');
           this.hud.setPrompt(null);
         } else if (outsideDoor && !uiBlocking) {
           this.hud.setDistrict(PLAYER_HOUSE.name);
@@ -388,13 +505,23 @@ export class GameApp {
 
     const cullX = this.aerial.active ? this.engine.camera.position.x : p.x;
     const cullZ = this.aerial.active ? this.engine.camera.position.z : p.z;
+    tickSignals(dt);
     if (!this.wasInsideHome) {
-      this.pedestrians.update(dt, cullX, cullZ);
+      this.pedestrians.update(dt, cullX, cullZ, this.clock.hourFloat);
+      const car = this.parked.activeMesh;
+      this.trafficObstacles[0]!.x = car ? car.position.x : p.x;
+      this.trafficObstacles[0]!.z = car ? car.position.z : p.z;
+      this.trafficObstacles[0]!.r = car ? 1.2 : 0.5;
+      this.trafficObstacles.length = 1;
+      for (const c of this.pedestrians.crossers) this.trafficObstacles.push(c);
       this.traffic.update(dt, cullX, cullZ);
+      this.taxis.cull(cullX, cullZ);
       this.cityCull.update(dt, this.cityRoot, cullX, cullZ);
+      this.chunks.update(dt, cullX, cullZ);
     }
     if (!this.aerial.active) this.engine.followShadows(p.x, p.z);
     this.cityMap.updatePlayer(p.x, p.z);
+    this.density.update(dt, cullX, cullZ, this.aerial.active ? this.engine.camera.rotation.y : this.player.object.rotation.y);
 
     this.audio.update(dt, {
       walking: this.player.moving && !driving,
@@ -413,6 +540,16 @@ export class GameApp {
 
     this.hud.tickFps(dt);
     this.watchFps(dt);
+    if (this.devPose) {
+      const { x, z, h, pitch, yaw } = this.devPose;
+      const cam = this.engine.camera;
+      cam.position.set(x, h, z);
+      cam.rotation.order = 'YXZ';
+      cam.rotation.set((-pitch * Math.PI) / 180, (yaw * Math.PI) / 180, 0);
+      cam.updateMatrixWorld();
+      this.chunks.update(0, x, z);
+      this.engine.followShadows(x, z);
+    }
     this.engine.render();
     this.perf.sample(dt, this.engine.renderer, {
       fps: this.hud.getFps(),
@@ -435,6 +572,15 @@ export class GameApp {
     this.player.object.position.set(save.x, save.y, save.z);
     this.player.object.rotation.y = save.yaw;
     this.cameraRig.yaw = save.yaw;
+    if (save.look) {
+      const before = loadLook().characterId;
+      saveLook(save.look);
+      if (loadLook().characterId !== before) {
+        void mountRiggedPlayer(this.player.object, this.engine.renderer, loadLook().characterId);
+      }
+    }
+    if (save.wardrobe) replaceWardrobe(save.wardrobe);
+    if (save.fashionOwned) replaceOwned(save.fashionOwned);
   }
 
   private saveGame(silent = false): void {
@@ -450,6 +596,9 @@ export class GameApp {
       quality: GraphicsConfig.quality,
       relations: this.social.serialize(),
       jobCooldownUntil: this.lastJobAt,
+      look: loadLook(),
+      wardrobe: loadWardrobe(),
+      fashionOwned: ownedItems(),
     });
     if (!silent) {
       this.hud.notify('Partie sauvegardée');
@@ -461,7 +610,7 @@ export class GameApp {
     if (this.pauseMenu.isOpen() || this.aerial.active || this.parked.driving) return;
     if (this.phone.isOpen()) {
       this.phone.hide();
-      this.input.blockPointerLock = false;
+      this.releasePointerLock();
       return;
     }
     this.hud.hideTaxiMenu();
@@ -469,7 +618,7 @@ export class GameApp {
     this.input.blockPointerLock = true;
     this.phone.show({
       onClose: () => {
-        this.input.blockPointerLock = false;
+        this.releasePointerLock();
       },
       onOpenMap: () => this.toggleMap(),
       onOrderTaxi: (dest) => this.orderRide(dest),
@@ -488,7 +637,235 @@ export class GameApp {
     });
   }
 
+  private lookPausedFurniture = false;
+  private readonly studio = new CharacterStudio();
+  private lookSnapshot: PlayerLook | null = null;
+  private creatorPose: 'idle' | 'walk' | 'run' | 'sit' = 'idle';
+  private creatorTurn = 0;
+
+  private lookMenu(): LookHandlers {
+    return {
+      onSex: (sex) => this.commitLook({ sex }),
+      onCharacter: (characterId) => this.commitLook({ characterId }),
+      onSkin: (skinId) => this.commitLook({ skinId }),
+      onNose: (nose) => this.commitLook({ nose }, false),
+      onNoseWidth: (noseWidth) => this.commitLook({ noseWidth }, false),
+      onJaw: (jaw) => this.commitLook({ jaw }, false),
+      onChin: (chin) => this.commitLook({ chin }, false),
+      onEye: (eyeId) => this.commitLook({ eyeId }),
+      onHair: (hairId) => this.commitLook({ hairId }),
+      onBrow: (browId) => this.commitLook({ browId }),
+      onHairStyle: (hairStyle) => this.commitLook({ hairStyle }),
+      onHeight: (height) => this.commitLook({ height }, false),
+      onShoulders: (shoulders) => this.commitLook({ shoulders }, false),
+      onTorso: (torso) => this.commitLook({ torso }, false),
+      onHips: (hips) => this.commitLook({ hips }, false),
+      onArms: (arms) => this.commitLook({ arms }, false),
+      onLegs: (legs) => this.commitLook({ legs }, false),
+      onPreset: (id) => {
+        if (applyPreset(id)) this.applySavedLook(true);
+      },
+      onOutfit: (id) => {
+        const outfit = OUTFITS.find((item) => item.id === id);
+        if (outfit) this.commitLook({ topId: outfit.topId, bottomId: outfit.bottomId, shoeId: outfit.shoeId });
+      },
+      onTop: (topId) => this.commitLook({ topId }),
+      onBottom: (bottomId) => this.commitLook({ bottomId }),
+      onShoes: (shoeId) => this.commitLook({ shoeId }),
+      onDress: (id) => this.commitLook({ topId: id, bottomId: id }),
+      onView: (view) => this.cameraRig.snapCreator(view, this.player.object.rotation.y),
+      onPose: (pose) => {
+        const animator = this.player.object.userData.animator as
+          | { setActivity: (kind: string | null) => void }
+          | undefined;
+        if (pose === 'turn') {
+          this.creatorPose = 'walk';
+          this.creatorTurn = 1.35;
+          animator?.setActivity(null);
+          return;
+        }
+        if (pose === 'sit') {
+          this.creatorPose = 'sit';
+          this.creatorTurn = 0;
+          animator?.setActivity('tv');
+          return;
+        }
+        this.creatorPose = pose;
+        this.creatorTurn = 0;
+        animator?.setActivity(null);
+      },
+      onRandom: () => {
+        randomizeLook();
+        this.applySavedLook(true);
+      },
+      onReset: () => {
+        resetLook();
+        this.applySavedLook(true);
+      },
+      onSaveOutfit: () => {
+        const saved = addOutfit(`Tenue ${loadWardrobe().length + 1}`, loadLook());
+        this.hud.notify(`${saved.name} enregistrée`);
+        this.hud.showWardrobe();
+      },
+      onAccessory: (slot, id) => this.commitLook({ [SLOT_FIELDS[slot].id]: id } as Partial<PlayerLook>),
+      onAccessoryColor: (slot, color) => {
+        const key = SLOT_FIELDS[slot].color;
+        if (key) this.commitLook({ [key]: color } as Partial<PlayerLook>);
+      },
+      onBuy: (ids) => this.buyFashion(ids),
+      onBeard: (beardId) => this.commitLook({ beardId }),
+      onLip: (lipId) => this.commitLook({ lipId }),
+      onBlush: (blushId) => this.commitLook({ blushId }),
+      onShadow: (shadowId) => this.commitLook({ shadowId }),
+      onFreckles: (freckles) => this.commitLook({ freckles }),
+      money: () => this.money,
+      onEquipSaved: (id) => {
+        const saved = outfitById(id);
+        if (!saved) return;
+        const missing = unownedAccessories(saved.look).length;
+        saveLook(withoutUnowned(saved.look));
+        if (missing > 0) this.hud.notify('Articles non achetés retirés de la tenue');
+        this.applySavedLook(true);
+        this.hud.notify(saved.name);
+      },
+      onRenameSaved: (id, name) => {
+        renameOutfit(id, name);
+        if (this.hud.isLookPanelOpen()) this.hud.showLookPanel(loadLook(), this.lookMenu());
+      },
+      onDeleteSaved: (id) => {
+        deleteOutfit(id);
+        if (this.hud.isLookPanelOpen()) this.hud.showLookPanel(loadLook(), this.lookMenu());
+      },
+      onDuplicateSaved: (id) => {
+        const copy = duplicateOutfit(id);
+        if (copy) this.hud.notify(`${copy.name} créée`);
+        if (this.hud.isLookPanelOpen()) this.hud.showLookPanel(loadLook(), this.lookMenu());
+      },
+      onFavoriteSaved: (id) => {
+        toggleFavoriteOutfit(id);
+        if (this.hud.isLookPanelOpen()) this.hud.showLookPanel(loadLook(), this.lookMenu());
+      },
+      onCancel: () => this.closeCharacterLook(true),
+      onConfirm: () => this.closeCharacterLook(false),
+    };
+  }
+
+  private toggleCharacterLook(): void {
+    if (this.pauseMenu.isOpen() || this.dialogue.isOpen()) return;
+    if (this.parked.driving || this.aerial.active || this.taxis.isRiding()) return;
+    if (this.hud.isLookPanelOpen()) {
+      this.closeCharacterLook(false);
+      return;
+    }
+    this.openCharacterLook();
+  }
+
+  private openCharacterLook(): void {
+    this.audio.playUi();
+    this.input.blockPointerLock = true;
+    if (document.pointerLockElement) document.exitPointerLock();
+    if (this.furniture.enabled) {
+      this.lookPausedFurniture = true;
+      this.furniture.setEnabled(false);
+    }
+    const player = this.player.object;
+    let yaw = player.rotation.y;
+    if (this.wasInsideHome) {
+      const dx = PLAYER_HOUSE.cx - player.position.x;
+      const dz = PLAYER_HOUSE.cz - player.position.z;
+      if (dx * dx + dz * dz > 0.2) yaw = Math.atan2(dx, dz);
+    }
+    player.rotation.y = yaw;
+    this.lookSnapshot = loadLook();
+    this.creatorPose = 'idle';
+    this.creatorTurn = 0;
+    this.studio.enter(this.engine.scene, player.position);
+    this.cameraRig.beginCreatorView(yaw);
+    this.hud.showLookPanel(loadLook(), this.lookMenu());
+    this.hud.setTip('Glisse pour tourner · molette pour zoomer · Échap annule');
+  }
+
+  private closeCharacterLook(restore = false): void {
+    const snap = this.lookSnapshot;
+    this.lookSnapshot = null;
+    this.creatorPose = 'idle';
+    this.creatorTurn = 0;
+    this.hud.hideLookPanel();
+    this.studio.exit(this.engine.scene);
+    this.cameraRig.endCreatorView(this.wasInsideHome);
+    if (this.lookPausedFurniture && this.wasInsideHome) {
+      this.furniture.setEnabled(true);
+    }
+    this.lookPausedFurniture = false;
+    this.releasePointerLock();
+    if (restore && snap) {
+      saveLook(snap);
+      this.applySavedLook(false);
+      this.hud.notify('Apparence précédente');
+      return;
+    }
+    const look = loadLook();
+    if (unownedAccessories(look).length > 0) {
+      saveLook(withoutUnowned(look));
+      this.applySavedLook(false);
+      this.hud.notify('Personnage enregistré · articles essayés non achetés retirés');
+    } else {
+      this.hud.notify('Personnage enregistré');
+    }
+    this.saveGame(true);
+  }
+
+  private creatorFaceHeight(): number {
+    const rig = this.player.object.getObjectByName('player-rig');
+    const fit = rig?.userData.fit as { eyeY: number } | undefined;
+    if (!rig || !fit) return 1.52;
+    return rig.position.y + fit.eyeY * rig.scale.y;
+  }
+
+  private buyFashion(ids: string[]): void {
+    const items = ids.map((id) => accessoryById(id)).filter((item) => item && !isOwned(item.id));
+    const total = items.reduce((sum, item) => sum + (item?.price ?? 0), 0);
+    if (items.length === 0) return;
+    if (total > this.money) {
+      this.hud.notify('Pas assez de FCFA');
+      return;
+    }
+    this.money -= total;
+    for (const item of items) if (item) grantItem(item.id);
+    this.hud.setMoney(this.money);
+    this.audio.playUi();
+    this.saveGame(true);
+    this.hud.notify(`Acheté · ${total.toLocaleString('fr-FR')} FCFA`);
+    if (this.hud.isLookPanelOpen()) this.hud.showLookPanel(loadLook(), this.lookMenu());
+  }
+
+  private commitLook(patch: Partial<PlayerLook>, refresh = true): void {
+    chooseLook(patch);
+    this.applySavedLook(refresh);
+  }
+
+  private applySavedLook(refresh: boolean): void {
+    const next = loadLook();
+    const avatar = this.player.object;
+    const swap = next.characterId !== avatar.userData.characterId || avatar.userData.rigged !== true;
+    if (refresh && this.hud.isLookPanelOpen()) this.hud.showLookPanel(next, this.lookMenu());
+    if (!swap) {
+      applyAppearance(avatar, next);
+      return;
+    }
+    this.hud.setTip('Chargement du personnage…');
+    void mountRiggedPlayer(avatar, this.engine.renderer, next.characterId).then((ok) => {
+      if (!ok) this.hud.notify('Ce personnage n’a pas pu être chargé');
+      else if (this.hud.isLookPanelOpen()) this.hud.setTip('Glisse pour tourner · molette pour zoomer · Échap annule');
+      if (this.hud.isLookPanelOpen()) this.hud.showLookPanel(loadLook(), this.lookMenu());
+    });
+  }
+
   private togglePause(): void {
+    if (this.hud.isLookPanelOpen()) {
+      this.closeCharacterLook(true);
+      return;
+    }
     if (this.phone.isOpen()) {
       this.phone.hide();
       return;
@@ -499,37 +876,110 @@ export class GameApp {
     }
     if (this.pauseMenu.isOpen()) {
       this.pauseMenu.hide();
-      this.input.blockPointerLock = false;
+      this.releasePointerLock();
       return;
     }
     this.audio.playUi();
     this.input.blockPointerLock = true;
     this.pauseMenu.show({
       onResume: () => {
-        this.input.blockPointerLock = false;
+        this.releasePointerLock();
       },
       onSave: () => this.saveGame(),
-      onQuality: (q: GraphicsQuality) => {
+      onGraphics: (label: string) => {
+        // a manual choice overrides the low-FPS safety drop for this session
+        this.fpsAutoDropped = true;
         this.engine.applyLiveGraphics();
-        this.hud.notify(`Graphismes : ${q} (densité PNJ au prochain chargement)`);
+        this.onCityGraphicsChanged();
+        this.hud.notify(`Graphismes · ${label}`);
+      },
+      getStats: () => {
+        const s = this.perf.last;
+        const c = this.chunks.stats();
+        return {
+          fps: this.hud.getFps(),
+          calls: s?.calls ?? 0,
+          triangles: s?.triangles ?? 0,
+          chunks: `${c.base} quartiers (${c.detail} détaillés)`,
+          npcs: this.pedestrians.drawn,
+          vehicles: this.traffic.drawn,
+        };
       },
       onQuitHint: () => {
-        this.hud.notify('E interagir · P téléphone · Esc pause · M carte · V aérien · F3 perfs');
+        this.hud.notify('E interagir · P téléphone · Esc pause · M carte · V aérien · F3 perfs · F4 densité');
       },
     });
   }
 
+  /** City content that depends on settings (vegetation density) must be rebuilt. */
+  private onCityGraphicsChanged(): void {
+    if (Math.abs(GraphicsConfig.vegetationDensity - this.lastVegetation) > 0.01) {
+      this.lastVegetation = GraphicsConfig.vegetationDensity;
+      this.chunks.rebuildAll();
+    }
+    const p = this.player.object.position;
+    this.traffic.setCount(TRAFFIC_BASE * GraphicsConfig.trafficDensity, p.x, p.z);
+    this.pedestrians.setDensity(1.15 * GraphicsConfig.npcDensity);
+  }
+
+  private installDevHooks(): void {
+    const w = window as unknown as Record<string, unknown>;
+    w.__tp = (x: number, z: number, yaw = 0) => {
+      this.player.object.position.set(x, 0, z);
+      this.player.object.rotation.y = yaw;
+      this.cameraRig.yaw = yaw;
+      this.chunks.warm(x, z);
+    };
+    w.__traffic = this.traffic;
+    w.__peds = this.pedestrians;
+    w.__hour = (h: number | null) => {
+      this.clock.debugHour = h;
+      this.clock.syncFromYaounde();
+      this.refreshDayNight();
+    };
+    w.__chunks = this.chunks;
+    w.__weather = (wx: 'clear' | 'haze' | 'rain') => {
+      this.clock.weather = wx;
+      this.refreshDayNight();
+    };
+    /** Freeze the loop's camera and render a still from (x, h, z) with pitch/yaw in degrees. */
+    w.__shot = (x: number, z: number, h: number, pitch: number, yaw: number) => {
+      this.devPose = { x, z, h, pitch, yaw };
+      this.chunks.warm(x, z);
+      return new Promise<number>((resolve) => {
+        let n = 0;
+        const frame = () => {
+          if (++n < 4) requestAnimationFrame(frame);
+          else resolve(this.engine.renderer.info.render.calls);
+        };
+        requestAnimationFrame(frame);
+      });
+    };
+    w.__unfreeze = () => {
+      this.devPose = null;
+    };
+    w.__game = this;
+  }
+
   private watchFps(dt: number): void {
+    // background / unfocused tabs are throttled by the browser: that is not the GPU being slow
+    // aerial overview is not representative of play; a single spike (chunk streaming after a jump) is not either
+    if (document.hidden || !document.hasFocus() || this.aerial.active) {
+      this.fpsWarnTimer = 0;
+      this.fpsLowStreak = 0;
+      return;
+    }
     this.fpsWarnTimer += dt;
-    if (this.fpsWarnTimer < 8) return;
+    if (this.fpsWarnTimer < 4) return;
     this.fpsWarnTimer = 0;
     const fps = this.hud.getFps();
-    if (fps > 0 && fps < 26 && GraphicsConfig.quality !== 'low' && !this.fpsAutoDropped) {
+    this.fpsLowStreak = fps > 0 && fps < 26 ? this.fpsLowStreak + 1 : 0;
+    if (this.fpsLowStreak >= 3 && GraphicsConfig.quality !== 'low' && !this.fpsAutoDropped) {
       this.fpsAutoDropped = true;
       applyQuality('low');
-      saveGraphicsSettings();
       this.engine.applyLiveGraphics();
-      this.hud.notify('FPS bas — graphismes passés en Bas automatiquement');
+      this.onCityGraphicsChanged();
+      this.hud.notify('FPS bas — graphismes en Bas pour cette session (Pause › Graphismes pour changer)');
     }
   }
 
@@ -539,7 +989,7 @@ export class GameApp {
       this.talkingNpc = null;
     }
     this.dialogue.hide();
-    this.input.blockPointerLock = false;
+    this.releasePointerLock();
   }
 
   private talkToNpc(npc: { mesh: THREE.Group; name: string; role: string }): void {
@@ -581,14 +1031,73 @@ export class GameApp {
   private enterHomeMode(): void {
     if (!this.houseRoot) return;
     setHomeInteriorMode(this.houseRoot, this.cityRoot, this.engine.scene, true);
+    this.cameraRig.beginIndoorView();
+    this.furniture.setEnabled(true);
+    this.hud.setFurnitureMode(true);
+    this.input.blockPointerLock = true;
+    if (document.pointerLockElement) document.exitPointerLock();
     this.hud.setHomeMode(true);
+    this.hud.setTip('Mode meubles — clique et glisse · R tourne · Suppr range · molette zoome');
+  }
+
+  private refreshDayNight(): void {
+    this.engine.applyDayNight(this.clock.sunFactor, this.clock.weather, this.clock.hourFloat);
+    if (this.houseRoot) refreshHomeInteriorLook(this.houseRoot, this.engine.scene);
   }
 
   private exitHomeMode(): void {
     if (!this.houseRoot) return;
+    this.furniture.setEnabled(false);
+    this.hud.setFurnitureMode(false);
     this.hud.hideDecorShop();
     setHomeInteriorMode(this.houseRoot, this.cityRoot, this.engine.scene, false);
     this.hud.setHomeMode(false);
+    this.releasePointerLock();
+  }
+
+  private toggleFurniture(): void {
+    if (!this.wasInsideHome) return;
+    const next = !this.furniture.enabled;
+    this.furniture.setEnabled(next);
+    this.hud.setFurnitureMode(next);
+    if (next) {
+      this.input.blockPointerLock = true;
+      if (document.pointerLockElement) document.exitPointerLock();
+      this.hud.setTip('Glisse un meuble · R tourne · Suppr range · F ou Finir pour terminer');
+      this.audio.playUi();
+      return;
+    }
+    this.releasePointerLock();
+    this.hud.setTip('Chez toi — glisse pour regarder · E agir · Meubles pour déplacer');
+  }
+
+  private onFurnitureMoved(id: string, pose: FurnPose, commit: boolean): void {
+    this.homeDecor = {
+      ...this.homeDecor,
+      layout: { ...this.homeDecor.layout, [id]: pose },
+    };
+    if (this.houseRoot) syncHomeSpotsToFurniture(this.homeSpots, this.houseRoot);
+    if (commit) saveHomeDecor(this.homeDecor);
+  }
+
+  private storeFurnitureItem(id: string): void {
+    this.homeDecor = storeFurniture(this.homeDecor, id);
+    this.applyDecor();
+    this.audio.playUi();
+    this.hud.setTip(`${FURN_LABELS[id] ?? 'Meuble'} rangé — Déco › Rangés pour le remettre`);
+  }
+
+  private restoreFurnitureItem(id: string): void {
+    this.homeDecor = restoreFurniture(this.homeDecor, id);
+    this.applyDecor();
+    this.hud.refreshDecorShop(this.homeDecor);
+    this.audio.playConfirm();
+    this.hud.setTip(`${FURN_LABELS[id] ?? 'Meuble'} remis à sa place`);
+  }
+
+  private releasePointerLock(): void {
+    if (this.furniture?.enabled) return;
+    this.input.blockPointerLock = false;
   }
 
   private openDecorShop(): void {
@@ -598,6 +1107,14 @@ export class GameApp {
       onBuyItem: (id) => this.buyDecorItem(id),
       onBuyWall: (id) => this.buyWall(id),
       onBuyFloor: (id) => this.buyFloor(id),
+      onRestore: (id) => this.restoreFurnitureItem(id),
+      onResetLayout: () => {
+        this.homeDecor = resetFurnitureLayout(this.homeDecor);
+        this.applyDecor();
+        this.hud.refreshDecorShop(this.homeDecor);
+        this.audio.playConfirm();
+        this.hud.setTip('Meubles remis à leur place d’origine');
+      },
       onClose: () => undefined,
     });
   }
@@ -647,7 +1164,9 @@ export class GameApp {
 
   private applyDecor(): void {
     if (!this.houseRoot) return;
-    applyHomeDecor(this.houseRoot, this.homeDecor);
+    applyHomeDecor(this.houseRoot, this.homeDecor, this.collisions);
+    syncHomeSpotsToFurniture(this.homeSpots, this.houseRoot);
+    this.furniture.dropSelection();
   }
 
   private openLifeShop(spot: LifeSpot): void {
@@ -701,6 +1220,7 @@ export class GameApp {
     this.lastJobPay = jobPay(spot);
     this.homeBusy = 4.5;
     this.pendingActivity = 'work';
+    this.busyLabel = null;
     this.activity.start(
       this.player.object,
       'work',
@@ -747,6 +1267,10 @@ export class GameApp {
     // Home interactions (door, sleep, cook, TV, wash, clothes)
     if (this.houseRoot && (this.wasInsideHome || isInsidePlayerHouse(p.x, p.z))) {
       const spot = nearestHomeSpot(p.x, p.z, this.homeSpots);
+      if (spot?.kind === 'clothes') {
+        this.openCharacterLook();
+        return;
+      }
       if (spot) {
         const result = runHomeAction(
           spot.kind,
@@ -760,7 +1284,8 @@ export class GameApp {
           this.hud.setTip(result.tip);
           if (result.busySec) {
             this.homeBusy = result.busySec;
-            this.pendingActivity = (result.anim as typeof this.pendingActivity) ?? null;
+            this.pendingActivity = result.need ?? result.anim ?? null;
+            this.busyLabel = result.busyLabel ?? null;
           }
           if (result.anim && result.snapX != null && result.snapZ != null) {
             this.activity.start(
@@ -847,7 +1372,7 @@ export class GameApp {
     if (this.aerial.active) {
       this.aerial.exit();
       this.engine.setAerialBudget(false);
-      this.input.blockPointerLock = false;
+      this.releasePointerLock();
       this.hud.setTip('Retour au sol');
       return;
     }

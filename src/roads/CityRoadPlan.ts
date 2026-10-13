@@ -67,11 +67,18 @@ export function worldHalf(): number {
   return WorldConfig.worldHalfSize;
 }
 
-/** Major grid lines used for roads (includes 0). */
+let axesCache: number[] | null = null;
+
+/** Road grid lines: multiples of ROAD_GRID (the highway cross is the 0 line). */
 export function gridAxes(): number[] {
-  const half = worldHalf();
+  if (axesCache) return axesCache;
+  const n = Math.floor(worldHalf() / ROAD_GRID);
   const axes: number[] = [];
-  for (let v = -half; v <= half; v += ROAD_GRID) axes.push(v);
-  if (!axes.includes(0)) axes.push(0);
-  return axes.sort((a, b) => a - b);
+  for (let k = -n; k <= n; k++) axes.push(k * ROAD_GRID);
+  axesCache = axes;
+  return axes;
+}
+
+export function isAvenueAxis(v: number): boolean {
+  return Math.abs(v) % (ROAD_GRID * 2) === 0 && Math.abs(v) > 0.5;
 }

@@ -10,6 +10,8 @@ export class Input {
   private aerialQueued = false;
   private phoneQueued = false;
   private pauseQueued = false;
+  private lookQueued = false;
+  private furnitureQueued = false;
   private zoomDelta = 0;
   private pointerLocked = false;
   private dragging = false;
@@ -125,6 +127,18 @@ export class Input {
     return v;
   }
 
+  consumeLookToggle(): boolean {
+    const v = this.lookQueued;
+    this.lookQueued = false;
+    return v;
+  }
+
+  consumeFurnitureToggle(): boolean {
+    const v = this.furnitureQueued;
+    this.furnitureQueued = false;
+    return v;
+  }
+
   consumeZoom(): number {
     const z = this.zoomDelta;
     this.zoomDelta = 0;
@@ -160,6 +174,12 @@ export class Input {
     }
     if (e.code === 'Escape') {
       this.pauseQueued = true;
+    }
+    if (e.code === 'KeyC' && !e.repeat) {
+      this.lookQueued = true;
+    }
+    if (e.code === 'KeyF' && !e.repeat) {
+      this.furnitureQueued = true;
     }
   };
 

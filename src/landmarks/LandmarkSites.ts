@@ -155,8 +155,8 @@ const HERO_FOOTPRINTS: LandmarkFootprint[] = [
     name: 'Maison du Joueur',
     x: 36,
     z: 108,
-    halfW: 17,
-    halfD: 18,
+    halfW: 18,
+    halfD: 28,
     districtId: 'nlongkak',
   },
   {

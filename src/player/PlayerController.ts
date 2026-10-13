@@ -3,6 +3,7 @@ import { WorldConfig } from '../config/WorldConfig';
 import type { Input } from '../core/Input';
 import type { ThirdPersonCamera } from '../camera/ThirdPersonCamera';
 import type { CollisionSystem } from '../world/CollisionSystem';
+import type { PlayerAnimator } from './PlayerRig';
 
 export class PlayerController {
   private vy = 0;
@@ -21,7 +22,7 @@ export class PlayerController {
     object.position.set(WorldConfig.spawn.x, WorldConfig.spawn.y, WorldConfig.spawn.z);
   }
 
-  update(dt: number, opts?: { speedMul?: number; canRun?: boolean }): void {
+  update(dt: number, opts?: { speedMul?: number; canRun?: boolean; groundY?: number }): void {
     const axes = this.input.getMoveAxes();
     const wantRun = this.input.isRunning() && (opts?.canRun ?? true);
     const mul = opts?.speedMul ?? 1;
@@ -51,11 +52,11 @@ export class PlayerController {
       );
       this.object.position.x = resolved.x;
       this.object.position.z = resolved.z;
-      this.object.rotation.y = Math.atan2(this.move.x, this.move.z);
+      this.turnToward(Math.atan2(this.move.x, this.move.z), dt);
       this.walkTime += dt * (wantRun ? 14 : 9);
-      this.animateWalk(this.walkTime, wantRun ? 1.15 : 0.85, true);
+      this.animateWalk(this.walkTime, wantRun ? 1.15 : 0.85, true, dt, speed);
     } else {
-      this.animateWalk(this.walkTime, 0, false);
+      this.animateWalk(this.walkTime, 0, false, dt, 0);
     }
 
     if (this.input.consumeJump() && this.grounded) {
@@ -63,22 +64,39 @@ export class PlayerController {
       this.grounded = false;
     }
 
+    const groundY = opts?.groundY ?? 0;
     this.vy -= WorldConfig.player.gravity * dt;
     this.object.position.y += this.vy * dt;
-    if (this.object.position.y <= 0) {
-      this.object.position.y = 0;
+    if (this.object.position.y <= groundY) {
+      this.object.position.y = groundY;
       this.vy = 0;
       this.grounded = true;
     }
 
-    if (!this.grounded) this.animateJumpPose();
+    if (!this.grounded && !this.animator()) this.animateJumpPose();
 
     const bound = WorldConfig.worldHalfSize - 20;
     this.object.position.x = THREE.MathUtils.clamp(this.object.position.x, -bound, bound);
     this.object.position.z = THREE.MathUtils.clamp(this.object.position.z, -bound, bound);
   }
 
-  private animateWalk(t: number, amp: number, moving: boolean): void {
+  private animator(): PlayerAnimator | undefined {
+    return this.object.userData.animator as PlayerAnimator | undefined;
+  }
+
+  private turnToward(target: number, dt: number): void {
+    let dy = target - this.object.rotation.y;
+    while (dy > Math.PI) dy -= Math.PI * 2;
+    while (dy < -Math.PI) dy += Math.PI * 2;
+    this.object.rotation.y += dy * Math.min(1, dt * 8);
+  }
+
+  private animateWalk(t: number, amp: number, moving: boolean, dt: number, speed: number): void {
+    const animator = this.animator();
+    if (animator) {
+      animator.setLocomotion(moving, this.running, dt, speed);
+      return;
+    }
     const legL = this.object.userData.legL as THREE.Group | undefined;
     const legR = this.object.userData.legR as THREE.Group | undefined;
     const shinL = this.object.userData.shinL as THREE.Group | undefined;

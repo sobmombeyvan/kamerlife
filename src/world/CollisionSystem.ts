@@ -5,6 +5,7 @@ export type Aabb = {
   maxY: number;
   minZ: number;
   maxZ: number;
+  tag?: string;
 };
 
 const CELL = 48;
@@ -16,10 +17,12 @@ export class CollisionSystem {
   private readonly grid = new Map<string, Aabb[]>();
   /** Temporary blockers (e.g. closed house door) keyed by id. */
   private readonly dynamic = new Map<string, Aabb>();
+  private readonly tagCells = new Map<string, Set<string>>();
 
   clear(): void {
     this.grid.clear();
     this.dynamic.clear();
+    this.tagCells.clear();
   }
 
   setDynamicBox(
@@ -45,8 +48,23 @@ export class CollisionSystem {
     this.dynamic.delete(id);
   }
 
-  addBox(cx: number, cy: number, cz: number, hx: number, hy: number, hz: number): void {
+  /** Drop every box added with `tag` (layers rebuilt when settings change, e.g. trees). */
+  removeTag(tag: string): void {
+    const cells = this.tagCells.get(tag);
+    if (!cells) return;
+    for (const key of cells) {
+      const list = this.grid.get(key);
+      if (!list) continue;
+      const kept = list.filter((b) => b.tag !== tag);
+      if (kept.length) this.grid.set(key, kept);
+      else this.grid.delete(key);
+    }
+    this.tagCells.delete(tag);
+  }
+
+  addBox(cx: number, cy: number, cz: number, hx: number, hy: number, hz: number, tag?: string): void {
     const box: Aabb = {
+      tag,
       minX: cx - hx,
       maxX: cx + hx,
       minY: cy - hy,
@@ -67,8 +85,53 @@ export class CollisionSystem {
           this.grid.set(key, list);
         }
         list.push(box);
+        if (tag) {
+          let cells = this.tagCells.get(tag);
+          if (!cells) this.tagCells.set(tag, (cells = new Set()));
+          cells.add(key);
+        }
       }
     }
+  }
+
+  /**
+   * First hit along segment a→b as a fraction in [0, 1] (1 = clear). Boxes that
+   * contain `a`, low curbs, poles and tree trunks are ignored (camera boom use).
+   */
+  segmentFraction(ax: number, ay: number, az: number, bx: number, by: number, bz: number): number {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const dz = bz - az;
+    let best = 1;
+    const test = (box: Aabb) => {
+      if (box.maxY < 0.6 || box.tag?.startsWith('trees:')) return;
+      if (box.maxX - box.minX < 1 && box.maxZ - box.minZ < 1) return;
+      if (ax > box.minX && ax < box.maxX && ay > box.minY && ay < box.maxY && az > box.minZ && az < box.maxZ) return;
+      let t0 = 0;
+      let t1 = best;
+      const slab = (o: number, d: number, mn: number, mx: number): boolean => {
+        if (Math.abs(d) < 1e-9) return o >= mn && o <= mx;
+        let ta = (mn - o) / d;
+        let tb = (mx - o) / d;
+        if (ta > tb) [ta, tb] = [tb, ta];
+        if (ta > t0) t0 = ta;
+        if (tb < t1) t1 = tb;
+        return t0 <= t1;
+      };
+      if (slab(ax, dx, box.minX, box.maxX) && slab(ay, dy, box.minY, box.maxY) && slab(az, dz, box.minZ, box.maxZ)) best = t0;
+    };
+    const x0 = Math.floor(Math.min(ax, bx) / CELL);
+    const x1 = Math.floor(Math.max(ax, bx) / CELL);
+    const z0 = Math.floor(Math.min(az, bz) / CELL);
+    const z1 = Math.floor(Math.max(az, bz) / CELL);
+    for (let ix = x0; ix <= x1; ix++) {
+      for (let iz = z0; iz <= z1; iz++) {
+        const list = this.grid.get(`${ix},${iz}`);
+        if (list) for (const box of list) test(box);
+      }
+    }
+    for (const box of this.dynamic.values()) test(box);
+    return best;
   }
 
   resolve(x: number, z: number, radius: number, y: number, height: number): { x: number; z: number } {

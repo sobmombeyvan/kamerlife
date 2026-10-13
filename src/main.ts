@@ -16,7 +16,9 @@ async function boot(): Promise<void> {
     const uiRoot = document.createElement('div');
     uiRoot.id = 'ui-root';
     appRoot.appendChild(uiRoot);
-    new GameApp(canvas, uiRoot).start();
+    const game = new GameApp(canvas, uiRoot);
+    if (import.meta.env.DEV) (window as unknown as { __game: unknown }).__game = game;
+    game.start();
     return;
   }
 

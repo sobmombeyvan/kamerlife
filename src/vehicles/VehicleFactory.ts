@@ -269,21 +269,54 @@ export function createBusMesh(): THREE.Group {
   stripe.position.y = 1.75;
   g.add(stripe);
 
-  addBadge(g, 'SOCATUR', 0x0d47a1, 0xffffff, 0, 2.55, 3.78, 1.6, 0.38);
+  addBadge(g, 'KAMER BUS', 0x0d47a1, 0xffffff, 0, 2.55, 3.78, 1.6, 0.38);
   addBadge(g, 'CENTRE', 0xffc107, 0x1a237e, 0, 2.15, 3.78, 1.4, 0.32);
   addBadge(g, 'YDE · MOKOLO', 0x0d47a1, 0xffc107, 1.18, 1.95, 0.4, 0.05, 0.42);
   addWheels(g, 2.5, 0.95, 0.42, wheelGeo);
 
   g.userData.driveable = false;
   g.userData.brand = 'bus';
-  g.userData.label = 'Bus SOCATUR';
+  g.userData.label = 'Bus urbain';
+  g.userData.halfLength = 3.75;
+  g.userData.halfWidth = 1.15;
   return g;
 }
 
+const motoWheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.12, 10);
+const RIDER_SHIRTS = [0xf9a825, 0x1565c0, 0x2e7d32, 0xd84315, 0x6a1b9a];
+
+/** "Bend-skin" moto-taxi with its rider. */
 export function createMotoMesh(seed: number): THREE.Group {
   const g = new THREE.Group();
   const body = new THREE.Mesh(motoGeo, mat(seed % 2 ? 0xc62828 : 0x212121));
-  body.position.y = 0.55;
+  body.position.y = 0.62;
   g.add(body);
+  for (const z of [-0.62, 0.66]) {
+    const w = new THREE.Mesh(motoWheelGeo, mat(0x1b1b1b));
+    w.rotation.z = Math.PI / 2;
+    w.position.set(0, 0.3, z);
+    g.add(w);
+  }
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.05, 0.05), mat(0x9e9e9e));
+  bar.position.set(0, 1.0, 0.55);
+  g.add(bar);
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.62, 0.26), mat(RIDER_SHIRTS[seed % RIDER_SHIRTS.length]!));
+  torso.position.set(0, 1.22, -0.05);
+  torso.rotation.x = 0.25;
+  g.add(torso);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 6), mat(0x4a2c1d));
+  head.position.set(0, 1.66, 0.04);
+  g.add(head);
+  const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), mat(0x263238));
+  helmet.position.set(0, 1.68, 0.04);
+  g.add(helmet);
+  for (const x of [-0.13, 0.13]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.5, 0.14), mat(0x37474f));
+    leg.position.set(x, 0.82, 0.1);
+    leg.rotation.x = -0.9;
+    g.add(leg);
+  }
+  g.userData.halfLength = 0.95;
+  g.userData.halfWidth = 0.35;
   return g;
 }

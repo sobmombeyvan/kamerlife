@@ -78,6 +78,11 @@ export function setSurfaceAnisotropy(value: number): void {
   }
 }
 
+/** Shared procedural maps (albedo, roughness, normal) for custom materials. */
+export function surfaceMaps(kind: SurfaceKind): SurfaceMaps {
+  return mapsFor(kind);
+}
+
 export function tileMetersFor(kind: SurfaceKind): number {
   return TILE_METERS[kind];
 }

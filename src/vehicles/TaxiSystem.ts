@@ -8,7 +8,7 @@ import {
   type TaxiDestination,
   type TaxiStand,
 } from './TaxiDestinations';
-import { ROAD_GRID } from '../roads/CityRoadPlan';
+import { pickupStop, taxiRoute, type RoadPoint } from './RoadRoute';
 
 export type TaxiRideState =
   | { phase: 'idle' }
@@ -20,11 +20,15 @@ export type TaxiRideState =
       to: TaxiDestination;
       path: Array<{ x: number; z: number }>;
       seg: number;
+      /** Metres travelled along the current segment. */
       segT: number;
-      /** Seconds to cross current segment. */
-      segDur: number;
       boardT: number;
+      /** Cruise speed for the current phase. */
       speed: number;
+      /** Current speed. */
+      v: number;
+      /** Pavement point where the passenger steps out. */
+      exit: { x: number; z: number } | null;
     };
 
 export type TaxiUpdateResult = {
@@ -34,8 +38,11 @@ export type TaxiUpdateResult = {
   follow?: THREE.Object3D;
 };
 
-const PICKUP_SPEED = 28;
-const CRUISE_SPEED = 42;
+const PICKUP_SPEED = 14;
+const CRUISE_SPEED = 30;
+const CORNER_SPEED = 9;
+const ACCEL = 9;
+const BRAKE = 8;
 const BOARD_SEC = 0.85;
 const DROPOFF_SEC = 0.7;
 
@@ -49,6 +56,7 @@ export class TaxiSystem {
   private state: TaxiRideState = { phase: 'idle' };
   private readonly standMeshes = new Map<string, THREE.Group>();
   private rideCar: THREE.Group | null = null;
+  private pickRoad: RoadPoint | null = null;
   private readonly wheels: THREE.Object3D[] = [];
 
   constructor(scene: THREE.Scene) {
@@ -57,6 +65,15 @@ export class TaxiSystem {
     this.stands = buildTaxiStands();
     this.destinations = buildTaxiDestinations();
     for (const s of this.stands) this.placeStand(s);
+  }
+
+  /** Hide stands far from the viewer (each stand is a car, a shelter and a sign). */
+  cull(x: number, z: number, range = 240): void {
+    const r2 = range * range;
+    for (const s of this.stands) {
+      const m = this.standMeshes.get(s.id);
+      if (m) m.visible = (s.x - x) ** 2 + (s.z - z) ** 2 < r2;
+    }
   }
 
   getState(): TaxiRideState {
@@ -95,12 +112,15 @@ export class TaxiSystem {
     const fare = estimateFare(fromX, fromZ, dest);
     this.clearRideCar();
 
-    // Spawn taxi a short distance away for pickup approach
-    const approach = spawnOffset(fromX, fromZ, 38);
+    // The taxi comes up the nearest road in the kerb lane and stops level with the passenger
+    const pick = pickupStop(fromX, fromZ);
+    this.pickRoad = pick?.road ?? null;
+    const approach = pick?.approach ?? { x: fromX, z: fromZ - 30 };
+    const stop = pick?.stop ?? { x: fromX, z: fromZ };
     const car = createCarMesh(11, true);
     car.name = 'yango-ride';
     car.position.set(approach.x, 0, approach.z);
-    car.rotation.y = Math.atan2(fromX - approach.x, fromZ - approach.z);
+    car.rotation.y = Math.atan2(stop.x - approach.x, stop.z - approach.z);
     this.root.add(car);
     this.rideCar = car;
     this.wheels.length = 0;
@@ -108,20 +128,18 @@ export class TaxiSystem {
       if (o.userData.spinWheel) this.wheels.push(o);
     });
 
-    const pickupPath = [{ x: approach.x, z: approach.z }, { x: fromX, z: fromZ }];
-    const firstDur = Math.max(0.8, pathLength(pickupPath) / PICKUP_SPEED);
-
     this.state = {
       phase: 'pickup',
       t: 0,
       fare,
       to: dest,
-      path: pickupPath,
+      path: [approach, stop],
       seg: 0,
       segT: 0,
-      segDur: firstDur,
       boardT: 0,
       speed: PICKUP_SPEED,
+      v: PICKUP_SPEED * 0.6,
+      exit: null,
     };
     return fare;
   }
@@ -165,20 +183,23 @@ export class TaxiSystem {
       this.state.boardT += cap;
       const u = Math.min(1, this.state.boardT / BOARD_SEC);
       // Ease player toward taxi door then hide
-      player.position.x = THREE.MathUtils.lerp(player.position.x, car.position.x + 1.2, u);
+      player.position.x = THREE.MathUtils.lerp(player.position.x, car.position.x, u);
       player.position.z = THREE.MathUtils.lerp(player.position.z, car.position.z, u);
       player.position.y = 0;
       player.rotation.y = car.rotation.y;
       if (u >= 1) {
         player.visible = false;
-        // Build city path to destination
-        const drivePath = buildDrivePath(car.position.x, car.position.z, this.state.to.x, this.state.to.z);
+        const route = this.pickRoad ? taxiRoute(this.pickRoad, this.state.to.x, this.state.to.z) : null;
         this.state.phase = 'driving';
-        this.state.path = drivePath;
+        this.state.path = route?.path ?? [
+          { x: car.position.x, z: car.position.z },
+          { x: this.state.to.x, z: this.state.to.z },
+        ];
+        this.state.exit = route?.exit ?? null;
         this.state.seg = 0;
         this.state.segT = 0;
         this.state.speed = CRUISE_SPEED;
-        this.state.segDur = segmentDuration(drivePath, 0, CRUISE_SPEED);
+        this.state.v = 0;
         return { riding: true, status: `En route · ${this.state.to.name}`, follow: car };
       }
       return { riding: true, status: 'Montée à bord…', follow: car };
@@ -208,13 +229,9 @@ export class TaxiSystem {
     this.state.boardT += cap;
     const u = Math.min(1, this.state.boardT / DROPOFF_SEC);
     player.visible = true;
-    const exitX = car.position.x + Math.cos(car.rotation.y) * 2.2;
-    const exitZ = car.position.z + Math.sin(car.rotation.y) * 2.2;
-    // exit to the side
-    const sideX = car.position.x + Math.cos(car.rotation.y - Math.PI / 2) * 2.4;
-    const sideZ = car.position.z + Math.sin(car.rotation.y - Math.PI / 2) * 2.4;
-    void exitX;
-    void exitZ;
+    // step out onto the pavement on the kerb side
+    const sideX = this.state.exit?.x ?? car.position.x - Math.cos(car.rotation.y) * 2.4;
+    const sideZ = this.state.exit?.z ?? car.position.z + Math.sin(car.rotation.y) * 2.4;
     player.position.x = THREE.MathUtils.lerp(car.position.x, sideX, u);
     player.position.z = THREE.MathUtils.lerp(car.position.z, sideZ, u);
     player.position.y = 0;
@@ -238,39 +255,48 @@ export class TaxiSystem {
 
   private advanceAlongPath(car: THREE.Group, dt: number): boolean {
     if (this.state.phase !== 'pickup' && this.state.phase !== 'driving') return true;
-    const path = this.state.path;
-    if (this.state.seg >= path.length - 1) return true;
+    const s = this.state;
+    const path = s.path;
+    if (s.seg >= path.length - 1) return true;
 
-    this.state.segT += dt;
-    let u = Math.min(1, this.state.segT / Math.max(0.05, this.state.segDur));
-    // Smoothstep
-    u = u * u * (3 - 2 * u);
+    // speed limit: brake for the stop at the end and for each bend ahead
+    let limit = s.speed;
+    let ahead = segLen(path, s.seg) - s.segT;
+    for (let i = s.seg + 1; i < path.length - 1 && ahead < 140; i++) {
+      if (turnAngle(path, i) > 0.2) limit = Math.min(limit, Math.sqrt(CORNER_SPEED * CORNER_SPEED + 2 * BRAKE * ahead));
+      ahead += segLen(path, i);
+    }
+    const toEnd = totalFrom(path, s.seg) - s.segT;
+    limit = Math.min(limit, Math.sqrt(2 * BRAKE * Math.max(0, toEnd)) + 0.8);
+    s.v = s.v < limit ? Math.min(limit, s.v + ACCEL * dt) : Math.max(limit, s.v - BRAKE * 1.6 * dt);
 
-    const a = path[this.state.seg]!;
-    const b = path[this.state.seg + 1]!;
+    let step = s.v * dt;
+    while (step > 0 && s.seg < path.length - 1) {
+      const left = segLen(path, s.seg) - s.segT;
+      if (step < left) {
+        s.segT += step;
+        step = 0;
+      } else {
+        step -= left;
+        s.seg += 1;
+        s.segT = 0;
+      }
+    }
+    if (s.seg >= path.length - 1) {
+      const end = path[path.length - 1]!;
+      car.position.set(end.x, 0, end.z);
+      return true;
+    }
+    const a = path[s.seg]!;
+    const b = path[s.seg + 1]!;
+    const u = s.segT / Math.max(0.01, segLen(path, s.seg));
     car.position.x = a.x + (b.x - a.x) * u;
     car.position.z = a.z + (b.z - a.z) * u;
-    car.position.y = 0;
-
     const dx = b.x - a.x;
     const dz = b.z - a.z;
-    if (dx * dx + dz * dz > 0.01) {
-      const targetYaw = Math.atan2(dx, dz);
-      car.rotation.y = dampAngle(car.rotation.y, targetYaw, dt * 8);
-    }
-
+    if (dx * dx + dz * dz > 0.01) car.rotation.y = dampAngle(car.rotation.y, Math.atan2(dx, dz), dt * 9);
     // Subtle suspension bob
-    car.position.y = Math.sin(this.state.t * 14) * 0.03;
-
-    if (this.state.segT >= this.state.segDur) {
-      this.state.seg += 1;
-      this.state.segT = 0;
-      if (this.state.seg >= path.length - 1) {
-        car.position.set(b.x, 0, b.z);
-        return true;
-      }
-      this.state.segDur = segmentDuration(path, this.state.seg, this.state.speed);
-    }
+    car.position.y = Math.sin(s.t * 14) * 0.03;
     return false;
   }
 
@@ -283,9 +309,7 @@ export class TaxiSystem {
       const len = Math.hypot(path[i + 1]!.x - path[i]!.x, path[i + 1]!.z - path[i]!.z);
       total += len;
       if (i < this.state.seg) done += len;
-      else if (i === this.state.seg) {
-        done += len * Math.min(1, this.state.segT / Math.max(0.05, this.state.segDur));
-      }
+      else if (i === this.state.seg) done += Math.min(len, this.state.segT);
     }
     return total > 0 ? done / total : 1;
   }
@@ -360,101 +384,31 @@ export class TaxiSystem {
   }
 }
 
-function spawnOffset(x: number, z: number, dist: number): { x: number; z: number } {
-  // Approach along nearest grid road axis
-  const toNS = Math.abs(((x % ROAD_GRID) + ROAD_GRID) % ROAD_GRID - ROAD_GRID / 2);
-  const toEW = Math.abs(((z % ROAD_GRID) + ROAD_GRID) % ROAD_GRID - ROAD_GRID / 2);
-  if (toNS < toEW) {
-    return { x, z: z - dist };
-  }
-  return { x: x - dist, z };
+type P = { x: number; z: number };
+
+function segLen(path: P[], i: number): number {
+  const a = path[i]!;
+  const b = path[i + 1]!;
+  return Math.hypot(b.x - a.x, b.z - a.z);
 }
 
-/** Manhattan path through a corner — reads like city blocks. */
-function buildDrivePath(
-  fromX: number,
-  fromZ: number,
-  toX: number,
-  toZ: number,
-): Array<{ x: number; z: number }> {
-  const dx = toX - fromX;
-  const dz = toZ - fromZ;
-  const dist = Math.hypot(dx, dz);
-
-  const corners: Array<{ x: number; z: number }> = [{ x: fromX, z: fromZ }];
-
-  if (dist < 25) {
-    corners.push({ x: toX, z: toZ });
-    return corners;
-  }
-
-  const midX = fromX + dx * 0.5;
-  const midZ = fromZ + dz * 0.5;
-  const gx = Math.round(midX / ROAD_GRID) * ROAD_GRID;
-  const gz = Math.round(midZ / ROAD_GRID) * ROAD_GRID;
-
-  const cornerA = { x: toX, z: fromZ };
-  const cornerB = { x: fromX, z: toZ };
-  const scoreA = Math.min(Math.abs(fromZ - gz), Math.abs(toX - gx));
-  const scoreB = Math.min(Math.abs(fromX - gx), Math.abs(toZ - gz));
-  const via = scoreA <= scoreB ? cornerA : cornerB;
-
-  if (Math.hypot(via.x - fromX, via.z - fromZ) > 8) corners.push(via);
-  corners.push({ x: toX, z: toZ });
-
-  // Subdivide long legs for smoother motion / wheel spin
-  const refined: Array<{ x: number; z: number }> = [corners[0]!];
-  for (let i = 0; i < corners.length - 1; i++) {
-    const a = corners[i]!;
-    const b = corners[i + 1]!;
-    refined.push(...subdivide(a, b, 80));
-    refined.push(b);
-  }
-  return dedupePath(refined);
-}
-
-function subdivide(
-  a: { x: number; z: number },
-  b: { x: number; z: number },
-  step: number,
-): Array<{ x: number; z: number }> {
-  const len = Math.hypot(b.x - a.x, b.z - a.z);
-  const n = Math.floor(len / step);
-  const out: Array<{ x: number; z: number }> = [];
-  for (let i = 1; i <= n; i++) {
-    const u = i / (n + 1);
-    out.push({ x: a.x + (b.x - a.x) * u, z: a.z + (b.z - a.z) * u });
-  }
-  return out;
-}
-
-function dedupePath(path: Array<{ x: number; z: number }>): Array<{ x: number; z: number }> {
-  const out: Array<{ x: number; z: number }> = [];
-  for (const p of path) {
-    const last = out[out.length - 1];
-    if (!last || Math.hypot(p.x - last.x, p.z - last.z) > 2) out.push(p);
-  }
-  return out.length >= 2 ? out : path;
-}
-
-function pathLength(path: Array<{ x: number; z: number }>): number {
+function totalFrom(path: P[], seg: number): number {
   let s = 0;
-  for (let i = 0; i < path.length - 1; i++) {
-    s += Math.hypot(path[i + 1]!.x - path[i]!.x, path[i + 1]!.z - path[i]!.z);
-  }
+  for (let i = seg; i < path.length - 1; i++) s += segLen(path, i);
   return s;
 }
 
-function segmentDuration(
-  path: Array<{ x: number; z: number }>,
-  seg: number,
-  speed: number,
-): number {
-  const a = path[seg];
-  const b = path[seg + 1];
-  if (!a || !b) return 0.5;
-  const len = Math.hypot(b.x - a.x, b.z - a.z);
-  return Math.max(0.35, len / speed);
+/** Heading change at vertex i, radians. */
+function turnAngle(path: P[], i: number): number {
+  const a = path[i - 1]!;
+  const b = path[i]!;
+  const c = path[i + 1]!;
+  const h1 = Math.atan2(b.x - a.x, b.z - a.z);
+  const h2 = Math.atan2(c.x - b.x, c.z - b.z);
+  let d = h2 - h1;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return Math.abs(d);
 }
 
 function dampAngle(current: number, target: number, lambda: number): number {

@@ -16,9 +16,12 @@ export class GameClock {
     this.syncFromYaounde();
   }
 
+  /** Dev/testing: pin the clock to an hour (0–24) instead of real Yaoundé time. */
+  debugHour: number | null = null;
+
   /** Pull current wall-clock time in Yaoundé. */
   syncFromYaounde(): void {
-    this.minutes = yaoundeMinutesNow();
+    this.minutes = this.debugHour !== null ? Math.round(this.debugHour * 60) % 1440 : yaoundeMinutesNow();
   }
 
   update(dt: number): void {
@@ -46,6 +49,10 @@ export class GameClock {
 
   get hours(): number {
     return Math.floor(this.minutes / 60);
+  }
+
+  get hourFloat(): number {
+    return this.minutes / 60;
   }
 
   get mins(): number {

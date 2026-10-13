@@ -2,7 +2,7 @@ import type * as THREE from 'three';
 import { WorldConfig } from '../config/WorldConfig';
 import { GraphicsConfig } from '../config/GraphicsConfig';
 
-const ALWAYS_ON = new Set(['terrain', 'roads', 'life-spots']);
+const ALWAYS_ON = new Set(['terrain', 'roads', 'life-spots', 'city-chunks']);
 
 /**
  * Hide far static city chunks past fog / load distance to cut draw calls.

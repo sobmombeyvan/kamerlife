@@ -1,6 +1,14 @@
 import * as THREE from 'three';
 
-export type OutfitId = 'casual' | 'street' | 'smart' | 'home' | 'sport';
+export type OutfitId =
+  | 'original'
+  | 'casual'
+  | 'street'
+  | 'smart'
+  | 'home'
+  | 'sport'
+  | 'bordeaux'
+  | 'dore';
 
 export type Outfit = {
   id: OutfitId;
@@ -11,10 +19,13 @@ export type Outfit = {
 };
 
 export const OUTFITS: Outfit[] = [
-  { id: 'casual', name: 'Casual vert', shirt: 0x0f7660, shirtDark: 0x0a5446, pants: 0x1e2a3a },
-  { id: 'street', name: 'Street rouge', shirt: 0xc62828, shirtDark: 0x8e0000, pants: 0x212121 },
-  { id: 'smart', name: 'Chic bleu', shirt: 0x1565c0, shirtDark: 0x0d47a1, pants: 0x37474f },
-  { id: 'home', name: 'Maison', shirt: 0xfff3e0, shirtDark: 0xd7ccc8, pants: 0x5d4037 },
+  { id: 'original', name: "D'origine", shirt: 0xffffff, shirtDark: 0xffffff, pants: 0xffffff },
+  { id: 'casual', name: 'Vert', shirt: 0x0f7660, shirtDark: 0x0a5446, pants: 0x1e2a3a },
+  { id: 'street', name: 'Rouge', shirt: 0xc62828, shirtDark: 0x8e0000, pants: 0x212121 },
+  { id: 'smart', name: 'Bleu', shirt: 0x1565c0, shirtDark: 0x0d47a1, pants: 0x37474f },
+  { id: 'home', name: 'Crème', shirt: 0xfff3e0, shirtDark: 0xd7ccc8, pants: 0x5d4037 },
+  { id: 'bordeaux', name: 'Bordeaux', shirt: 0x6d1a36, shirtDark: 0x4a1024, pants: 0x6d1a36 },
+  { id: 'dore', name: 'Doré', shirt: 0xf9a825, shirtDark: 0xf57f17, pants: 0x6d4c41 },
   { id: 'sport', name: 'Sport', shirt: 0xff8f00, shirtDark: 0xe65100, pants: 0x263238 },
 ];
 
@@ -27,7 +38,7 @@ export function loadOutfitId(): OutfitId {
   } catch {
     /* ignore */
   }
-  return 'casual';
+  return 'original';
 }
 
 export function saveOutfitId(id: OutfitId): void {
@@ -40,7 +51,10 @@ export function applyPlayerOutfit(player: THREE.Object3D, outfit: Outfit): void 
   if (shirtMats) {
     for (const m of shirtMats) {
       const dark = m.userData.shirtDark;
-      m.color.setHex(dark ? outfit.shirtDark : outfit.shirt);
+      const tint = new THREE.Color(dark ? outfit.shirtDark : outfit.shirt);
+      // A textured suit stays readable; the swatch still shifts the fabric color.
+      if (m.map) tint.lerp(new THREE.Color(0xffffff), 0.62);
+      m.color.copy(tint);
     }
   }
   if (pantsMats) {

@@ -1,25 +1,129 @@
 import * as THREE from 'three';
 import { WorldConfig } from '../config/WorldConfig';
 import type { Input } from '../core/Input';
+import type { CollisionSystem } from '../world/CollisionSystem';
 
 export type CameraFollowOpts = {
   distance?: number;
   lookHeight?: number;
-  /** Elevated isometric-style follow (home interior). */
+  /** Overhead plan of the house. */
   isometric?: boolean;
+  /** Room point the indoor camera frames, blended with the player. */
+  focusX?: number;
+  focusZ?: number;
 };
 
 export class ThirdPersonCamera {
   yaw = 0;
   pitch = 0.2;
+  private indoorZoom = 1;
   private readonly desired = new THREE.Vector3();
   private readonly lookAt = new THREE.Vector3();
   private isoBlend = 0;
+  /** 0 frames the face, 1 frames the whole body. */
+  private creatorZoom = 0.72;
+  private creatorPitch = 0.18;
+  private creatorFocus: 'face' | 'body' = 'body';
+  private creatorSnap = false;
+  private collisions: CollisionSystem | null = null;
 
   constructor(
     private readonly camera: THREE.PerspectiveCamera,
     private readonly input: Input,
   ) {}
+
+  /** Keep the outdoor camera in front of walls between it and the player. */
+  setCollisions(collisions: CollisionSystem): void {
+    this.collisions = collisions;
+  }
+
+  /** Overhead view of the apartment, so every piece is clickable. */
+  beginIndoorView(): void {
+    this.yaw = 0;
+    this.pitch = 1.52;
+    this.indoorZoom = 1;
+    this.isoBlend = 1;
+    // Wheel ticks spent outdoors must not snap the plan on the first indoor frame.
+    this.input.consumeZoom();
+  }
+
+  /** Portrait framing while the player is built, like a character creator. */
+  beginCreatorView(playerYaw: number): void {
+    this.yaw = playerYaw;
+    this.creatorPitch = 0.12;
+    this.creatorZoom = 1;
+    this.creatorFocus = 'body';
+    this.isoBlend = 0;
+    this.creatorSnap = true;
+  }
+
+  /** Face tab pulls in; body and clothes pull back. Wheel zoom still wins afterwards. */
+  setCreatorFocus(focus: 'face' | 'body'): void {
+    if (focus === this.creatorFocus) return;
+    this.creatorFocus = focus;
+    this.creatorZoom = focus === 'face' ? 0.08 : 1;
+  }
+
+  snapCreator(which: 'front' | 'left' | 'right' | 'back' | 'full' | 'side' | 'reset', playerYaw: number): void {
+    if (which === 'reset' || which === 'full') {
+      this.beginCreatorView(playerYaw);
+      return;
+    }
+    const offset =
+      which === 'front' ? 0 : which === 'left' ? -Math.PI / 2 : which === 'back' ? Math.PI : Math.PI / 2;
+    this.yaw = playerYaw + offset;
+  }
+
+  endCreatorView(indoor: boolean): void {
+    if (indoor) {
+      this.beginIndoorView();
+      return;
+    }
+    this.pitch = 0.22;
+    this.isoBlend = 0;
+    this.camera.fov = 60;
+    this.camera.updateProjectionMatrix();
+  }
+
+  updateCreator(
+    target: THREE.Object3D,
+    dt: number,
+    yawDelta: number,
+    pitchDelta: number,
+    zoomDelta: number,
+    /** Eye height of the current rig, so taller bodies stay framed. */
+    faceH = 1.52,
+  ): void {
+    this.isoBlend = 0;
+    this.yaw -= yawDelta * 0.005;
+    this.creatorPitch = THREE.MathUtils.clamp(this.creatorPitch - pitchDelta * 0.004, -0.15, 0.85);
+    if (zoomDelta) {
+      this.creatorZoom = THREE.MathUtils.clamp(this.creatorZoom + zoomDelta * 0.12, 0, 1);
+    }
+    const zoom = this.creatorZoom;
+    const dist = THREE.MathUtils.lerp(1.15, 3.7, zoom);
+    const lookH = THREE.MathUtils.lerp(faceH - 0.05, faceH * 0.64, Math.min(1, zoom / 0.6));
+    const horiz = dist * Math.cos(this.creatorPitch);
+    // Pan the subject into the open gap between the side panels.
+    const bias = 0.38;
+    const sideX = Math.cos(this.yaw) * bias;
+    const sideZ = -Math.sin(this.yaw) * bias;
+    this.desired.set(
+      target.position.x + Math.sin(this.yaw) * horiz + sideX,
+      target.position.y + lookH + Math.sin(this.creatorPitch) * dist * 0.55,
+      target.position.z + Math.cos(this.yaw) * horiz + sideZ,
+    );
+    const alpha = this.creatorSnap ? 1 : 1 - Math.exp(-8 * dt);
+    this.creatorSnap = false;
+    this.camera.position.lerp(this.desired, alpha);
+    this.lookAt.set(target.position.x + sideX, target.position.y + lookH, target.position.z + sideZ);
+    this.camera.lookAt(this.lookAt);
+    const fov = THREE.MathUtils.lerp(32, 44, zoom);
+    if (Math.abs(this.camera.fov - fov) > 0.05) {
+      this.camera.fov = fov;
+      this.camera.updateProjectionMatrix();
+    }
+  }
 
   update(target: THREE.Object3D, dt: number, opts?: CameraFollowOpts): void {
     const look = this.input.consumeLook();
@@ -31,16 +135,12 @@ export class ThirdPersonCamera {
     this.isoBlend += (blendTarget - this.isoBlend) * Math.min(1, dt * 4);
 
     if (iso) {
-      // Prefer a high corner view; allow small orbit
-      this.yaw -= look.dx * sens * 0.45;
-      this.pitch = THREE.MathUtils.lerp(this.pitch, 0.92, Math.min(1, dt * 5));
-      this.pitch = THREE.MathUtils.clamp(this.pitch, 0.72, 1.05);
-      // Nudge toward classic NE isometric when nearly free
-      const prefer = -Math.PI * 0.65;
-      let dyaw = prefer - this.yaw;
-      while (dyaw > Math.PI) dyaw -= Math.PI * 2;
-      while (dyaw < -Math.PI) dyaw += Math.PI * 2;
-      if (Math.abs(look.dx) < 0.5) this.yaw += dyaw * Math.min(1, dt * 1.2);
+      this.yaw -= look.dx * sens * 0.35;
+      this.pitch = THREE.MathUtils.lerp(this.pitch, 1.52, Math.min(1, dt * 8));
+      const wheel = this.input.consumeZoom();
+      if (wheel) {
+        this.indoorZoom = THREE.MathUtils.clamp(this.indoorZoom + wheel * 0.08, 0.82, 1.35);
+      }
     } else {
       this.yaw -= look.dx * sens;
       this.pitch = Math.max(
@@ -49,26 +149,45 @@ export class ThirdPersonCamera {
       );
     }
 
-    const distOutdoor = opts?.distance ?? WorldConfig.camera.distance;
-    const distIso = opts?.distance ?? 12.5;
-    const dist = THREE.MathUtils.lerp(distOutdoor, distIso, this.isoBlend);
-    const lookH = THREE.MathUtils.lerp(opts?.lookHeight ?? 1.45, 0.55, this.isoBlend);
-    const camH = THREE.MathUtils.lerp(WorldConfig.camera.height, 2.8, this.isoBlend);
+    const distOutdoor = opts?.isometric
+      ? WorldConfig.camera.distance
+      : (opts?.distance ?? WorldConfig.camera.distance);
+    const distIndoor = opts?.isometric ? (opts.distance ?? 20) * this.indoorZoom : distOutdoor;
+    const dist = THREE.MathUtils.lerp(distOutdoor, distIndoor, this.isoBlend);
+    const lookOutdoor = opts?.isometric ? 1.45 : (opts?.lookHeight ?? 1.45);
+    const lookIndoor = opts?.isometric ? (opts.lookHeight ?? 0.35) : lookOutdoor;
+    const lookH = THREE.MathUtils.lerp(lookOutdoor, lookIndoor, this.isoBlend);
+    const camH = THREE.MathUtils.lerp(WorldConfig.camera.height, 0.15, this.isoBlend);
+    const focusX = opts?.focusX ?? target.position.x;
+    const focusZ = opts?.focusZ ?? target.position.z;
+    const lookX = THREE.MathUtils.lerp(target.position.x, focusX, this.isoBlend);
+    const lookZ = THREE.MathUtils.lerp(target.position.z, focusZ, this.isoBlend);
 
     const horiz = dist * Math.cos(this.pitch);
+    const lift = THREE.MathUtils.lerp(0.55, 1, this.isoBlend);
     this.desired.set(
-      target.position.x + Math.sin(this.yaw) * horiz,
-      target.position.y + camH + Math.sin(this.pitch) * dist * (0.55 + 0.45 * this.isoBlend),
-      target.position.z + Math.cos(this.yaw) * horiz,
+      lookX + Math.sin(this.yaw) * horiz,
+      target.position.y + camH + Math.sin(this.pitch) * dist * lift,
+      lookZ + Math.cos(this.yaw) * horiz,
     );
 
     const alpha = 1 - Math.exp(-WorldConfig.camera.lerp * dt);
     this.camera.position.lerp(this.desired, alpha);
-    this.lookAt.set(target.position.x, target.position.y + lookH, target.position.z);
+    this.lookAt.set(lookX, target.position.y + lookH, lookZ);
+    if (this.collisions && this.isoBlend < 0.5) {
+      const c = this.camera.position;
+      const l = this.lookAt;
+      const t = this.collisions.segmentFraction(l.x, l.y, l.z, c.x, c.y, c.z);
+      if (t < 1) {
+        const len = c.distanceTo(l);
+        const k = Math.max(0.06, t - 0.35 / Math.max(len, 0.01));
+        c.set(l.x + (c.x - l.x) * k, l.y + (c.y - l.y) * k, l.z + (c.z - l.z) * k);
+      }
+    }
     this.camera.lookAt(this.lookAt);
 
     // Slight FOV tighten indoors for toy-like depth
-    const targetFov = THREE.MathUtils.lerp(60, 48, this.isoBlend);
+    const targetFov = THREE.MathUtils.lerp(60, 46, this.isoBlend);
     if (Math.abs(this.camera.fov - targetFov) > 0.05) {
       this.camera.fov = targetFov;
       this.camera.updateProjectionMatrix();
