@@ -7,9 +7,9 @@ import type { CollisionSystem } from '../world/CollisionSystem';
 export type HomeView = 'plan' | 'iso' | 'shoulder';
 
 export const HOME_VIEWS: ReadonlyArray<{ id: HomeView; label: string; short: string }> = [
-  { id: 'iso', label: 'Vue 3/4', short: '3/4' },
-  { id: 'plan', label: 'Vue du dessus', short: 'Dessus' },
-  { id: 'shoulder', label: 'Vue épaule', short: 'Épaule' },
+  { id: 'iso', label: 'Vue 3/4', short: 'Vue' },
+  { id: 'plan', label: 'Vue du dessus', short: 'Vue' },
+  { id: 'shoulder', label: 'Vue épaule', short: 'Vue' },
 ];
 
 export function homeViewLabel(view: HomeView): string {
@@ -48,6 +48,8 @@ export type CameraFollowOpts = {
   roomHalfW?: number;
   roomHalfD?: number;
   roomHeight?: number;
+  /** Skip wall clip and ease the cut — leaving the house must not yank the eye into the roof. */
+  skipClip?: boolean;
 };
 
 export class ThirdPersonCamera {
@@ -76,22 +78,26 @@ export class ThirdPersonCamera {
   }
 
   /** Frames the apartment with the player's chosen indoor view. */
-  beginIndoorView(view: HomeView = this.homeView): void {
+  beginIndoorView(view: HomeView = this.homeView, snap = true): void {
     this.homeView = view;
-    this.yaw = view === 'plan' ? 0 : -0.6;
-    this.pitch = HOME_FRAMING[view].pitch;
     this.indoorZoom = 1;
-    this.isoBlend = 1;
+    if (snap) {
+      this.yaw = view === 'plan' ? 0 : -0.6;
+      this.pitch = HOME_FRAMING[view].pitch;
+      this.isoBlend = 1;
+    }
     // Wheel ticks spent outdoors must not snap the plan on the first indoor frame.
     this.input.consumeZoom();
   }
 
   /** 3/4, plan or shoulder in the street — keeps the current heading. */
-  beginOutdoorView(view: HomeView): void {
+  beginOutdoorView(view: HomeView, snap = true): void {
     this.homeView = view;
     this.indoorZoom = 1;
-    this.isoBlend = view === 'shoulder' ? 0 : 1;
-    this.pitch = view === 'shoulder' ? 0.22 : CITY_FRAMING[view].pitch;
+    if (snap) {
+      this.isoBlend = view === 'shoulder' ? 0 : 1;
+      this.pitch = view === 'shoulder' ? 0.22 : CITY_FRAMING[view].pitch;
+    }
     this.input.consumeZoom();
   }
 
@@ -196,7 +202,8 @@ export class ThirdPersonCamera {
         this.pitch = THREE.MathUtils.clamp(this.pitch - look.dy * sens, -0.1, 1.2);
       } else {
         this.yaw -= look.dx * sens * 0.35;
-        this.pitch = THREE.MathUtils.lerp(this.pitch, frame.pitch, Math.min(1, dt * 8));
+        const pitchK = opts?.skipClip ? dt * 2.2 : dt * 8;
+        this.pitch = THREE.MathUtils.lerp(this.pitch, frame.pitch, Math.min(1, pitchK));
       }
       const wheel = this.input.consumeZoom();
       if (wheel) {
@@ -235,10 +242,15 @@ export class ThirdPersonCamera {
       lookZ + Math.cos(this.yaw) * horiz,
     );
 
-    const alpha = 1 - Math.exp(-WorldConfig.camera.lerp * dt);
+    const lerpRate = opts?.skipClip ? 3.2 : WorldConfig.camera.lerp;
+    const alpha = 1 - Math.exp(-lerpRate * dt);
     this.camera.position.lerp(this.desired, alpha);
     this.lookAt.set(lookX, target.position.y + lookH, lookZ);
-    if (this.collisions && (this.isoBlend < 0.5 || this.homeView === 'shoulder' || (opts?.outdoor && this.homeView === 'iso'))) {
+    if (
+      this.collisions &&
+      !opts?.skipClip &&
+      (this.isoBlend < 0.5 || this.homeView === 'shoulder' || (opts?.outdoor && this.homeView === 'iso'))
+    ) {
       const c = this.camera.position;
       const l = this.lookAt;
       const t = this.collisions.segmentFraction(l.x, l.y, l.z, c.x, c.y, c.z);

@@ -56,6 +56,7 @@ import {
   setHomeInteriorMode,
   refreshHomeInteriorLook,
   setHomeCeilingVisible,
+  revealHouseRoof,
   PLAYER_HOUSE,
 } from '../landmarks/PlayerHouse';
 import { TrafficSystem } from '../vehicles/TrafficSystem';
@@ -485,15 +486,20 @@ export class GameApp {
         const inside = isInsidePlayerHouse(p.x, p.z);
 
         if (inside && !this.wasInsideHome) {
-          this.enterHomeMode();
-          this.audio.playUi();
-          this.hud.setTip('Chez toi — E à la porte pour sortir');
+          if (this.exitHouseGrace <= 0) {
+            this.enterHomeMode();
+            this.audio.playUi();
+            this.hud.setTip('Chez toi — E à la porte pour sortir');
+            this.wasInsideHome = true;
+          }
         } else if (!inside && this.wasInsideHome) {
           this.exitHomeMode();
           this.exitHouseGrace = 2.2;
           this.hud.setTip('Dehors — joystick pour marcher · E à la porte pour rentrer');
+          this.wasInsideHome = false;
+        } else if (!(this.exitHouseGrace > 0 && inside)) {
+          this.wasInsideHome = inside;
         }
-        this.wasInsideHome = inside;
 
         const inMall = !inside && isInsideMfoundiMall(p.x, p.z);
         if (inMall && !this.wasInsideMall) {
@@ -537,8 +543,8 @@ export class GameApp {
                 roomHeight: 2.5,
               }
             : (inMall || inSanta || !!inVenue) && this.homeView === 'shoulder'
-              ? { distance: (inMall || inSanta) && p.y > 3 ? 5.5 : 6.2, lookHeight: 1.35 }
-              : this.streetCamOpts(),
+              ? { distance: (inMall || inSanta) && p.y > 3 ? 5.5 : 6.2, lookHeight: 1.35, skipClip: this.exitHouseGrace > 0 }
+              : this.streetCamOpts({ skipClip: this.exitHouseGrace > 0 }),
         );
         if (!busy) this.handleVehicleInteract();
 
@@ -699,11 +705,14 @@ export class GameApp {
       this.fadePalaceTracers(dt);
     }
 
+    if (this.houseRoot) revealHouseRoof(this.houseRoot);
+
     const cullX = this.aerial.active ? this.engine.camera.position.x : p.x;
     const cullZ = this.aerial.active ? this.engine.camera.position.z : p.z;
     tickSignals(dt);
     this.parked.syncPlayerBlockers();
-    if (!this.wasInsideHome) {
+    const keepCityLive = document.documentElement.classList.contains('is-phone');
+    if (!this.wasInsideHome || keepCityLive) {
       this.pedestrians.update(dt, cullX, cullZ, this.clock.hourFloat);
       const car = this.parked.activeMesh;
       this.trafficObstacles[0]!.x = car ? car.position.x : p.x;
@@ -1266,9 +1275,10 @@ export class GameApp {
 
   private enterHomeMode(): void {
     if (!this.houseRoot) return;
+    this.wasInsideHome = true;
     setHomeInteriorMode(this.houseRoot, this.cityRoot, this.engine.scene, true);
     this.hud.setHomeMode(true);
-    this.setHomeView(this.homeView);
+    this.setHomeView(this.homeView, false);
     this.setFurnitureMode(false);
     this.hud.setTip('Chez toi — E à la porte pour sortir · V change la vue');
   }
@@ -1290,24 +1300,29 @@ export class GameApp {
     );
   }
 
-  private setHomeView(view: HomeView): void {
+  private setHomeView(view: HomeView, snap = true): void {
     this.homeView = view;
     this.hud.setHomeView(view);
     if (this.wasInsideHome) {
-      this.cameraRig.beginIndoorView(view);
+      this.cameraRig.beginIndoorView(view, snap);
       if (this.houseRoot) setHomeCeilingVisible(this.houseRoot, view === 'shoulder');
       return;
     }
-    this.cameraRig.beginOutdoorView(view);
+    this.cameraRig.beginOutdoorView(view, snap);
   }
 
   /** Follow-cam options for the street / mall / car when not in shoulder view. */
-  private streetCamOpts(extra?: { distance?: number; lookHeight?: number }): {
+  private streetCamOpts(extra?: {
+    distance?: number;
+    lookHeight?: number;
+    skipClip?: boolean;
+  }): {
     isometric?: boolean;
     homeView?: HomeView;
     outdoor?: boolean;
     distance?: number;
     lookHeight?: number;
+    skipClip?: boolean;
   } | undefined {
     if (this.homeView === 'shoulder') return extra;
     return { isometric: true, homeView: this.homeView, outdoor: true, ...extra };
@@ -1358,10 +1373,14 @@ export class GameApp {
     this.furniture.setEnabled(false);
     this.hud.setFurnitureMode(false);
     this.hud.hideDecorShop();
+    const p = this.player.object.position;
+    const phone = document.documentElement.classList.contains('is-phone');
+    if (!phone) this.chunks.warm(p.x, p.z);
     setHomeInteriorMode(this.houseRoot, this.cityRoot, this.engine.scene, false);
     this.hud.setHomeMode(false);
-    this.cameraRig.beginOutdoorView(this.homeView);
+    this.cameraRig.beginOutdoorView(this.homeView, false);
     this.releasePointerLock();
+    this.saveGame(true);
   }
 
   private toggleFurniture(): void {
@@ -1730,6 +1749,7 @@ export class GameApp {
           this.hud.setTip(result.tip);
           if (spot.kind === 'door' && !isInsidePlayerHouse(this.player.object.position.x, this.player.object.position.z)) {
             this.exitHouseGrace = 2.2;
+            this.saveGame(true);
           }
           if (result.busySec) {
             this.homeBusy = result.busySec;

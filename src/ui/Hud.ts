@@ -55,7 +55,7 @@ import { isOwned } from '../player/fashion/inventory';
 import { DRESSES } from '../player/fashion/dresses';
 import { accessoryThumb, ensureThumbnails, hairThumb } from '../player/fashion/thumbnails';
 import { SLOT_FIELDS, unownedAccessories } from '../player/PlayerLook';
-import { HOME_VIEWS, type HomeView } from '../camera/ThirdPersonCamera';
+import type { HomeView } from '../camera/ThirdPersonCamera';
 
 export type LookFocus =
   | 'person'
@@ -303,7 +303,7 @@ export class Hud {
       <div class="tip" id="hud-tip">Explore la ville · appuie sur E devant un lieu</div>
       <div class="fab-col">
         <button type="button" class="map-fab" id="btn-look"><span class="fab-txt">Perso</span><kbd>C</kbd></button>
-        <button type="button" class="map-fab" id="btn-view"><span class="fab-txt">3/4</span><kbd>V</kbd></button>
+        <button type="button" class="map-fab" id="btn-view"><span class="fab-txt">Vue</span><kbd>V</kbd></button>
         <button type="button" class="map-fab hidden" id="btn-furn"><span class="fab-txt">Meubles</span><kbd>F</kbd></button>
         <button type="button" class="map-fab hidden" id="btn-decor"><span class="fab-txt">Déco</span></button>
         <button type="button" class="map-fab" id="btn-phone"><span class="fab-txt">Tél</span><kbd>P</kbd></button>
@@ -482,8 +482,8 @@ export class Hud {
   }
 
   /** Names the framing currently in use; pressing the button moves to the next. */
-  setHomeView(view: HomeView): void {
-    setFabLabel(this.viewBtn, HOME_VIEWS.find((v) => v.id === view)?.short ?? 'Vue');
+  setHomeView(_view: HomeView): void {
+    setFabLabel(this.viewBtn, 'Vue');
   }
 
   setFurnitureMode(on: boolean): void {

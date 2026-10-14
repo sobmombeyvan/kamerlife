@@ -19,8 +19,8 @@ export const PLAYER_HOUSE = {
   cz: 108,
   /** Living room spawn. */
   spawn: { x: 38, y: 0, z: 108 },
-  /** On the porch, outside the front door. */
-  doorOutside: { x: 36 + FRONT_DOOR.x, z: 108 + HOME_SHELL.innerD / 2 + 1.4 },
+  /** On the porch, past the stoop collider, still inside the compound. */
+  doorOutside: { x: 36 + FRONT_DOOR.x, z: 108 + HOME_SHELL.innerD / 2 + 2.4 },
   halfW: 15,
   halfD: 16,
   interiorHalfW: 8.2,
@@ -613,35 +613,41 @@ export function setHomeInteriorMode(
   if (was === enabled) return;
   house.userData.homeMode = enabled;
 
+  const phone = document.documentElement.classList.contains('is-phone');
   const exterior = house.userData.exterior as THREE.Object3D | undefined;
   const roof = house.userData.roof as THREE.Object3D | undefined;
   const ceiling = house.getObjectByName('home-ceiling');
   if (exterior) exterior.visible = !enabled;
-  if (roof) roof.visible = !enabled;
-  if (ceiling) ceiling.visible = !enabled;
-
-  for (const name of ['parked-cars', 'traffic', 'pedestrians', 'taxi-stands']) {
-    const g = scene.getObjectByName(name);
-    if (g) g.visible = !enabled;
-  }
-
-  if (enabled) {
-    if (house.parent !== scene) {
-      house.userData.prevParent = house.parent;
-      scene.attach(house);
+  // Keep roof/ceiling off while the 3/4 camera is still above the rooms.
+  // Showing them on the same frame as the outdoor cut fills the screen like a restart.
+  if (roof) roof.visible = false;
+  if (ceiling) ceiling.visible = false;
+  if (!enabled) house.userData.hideRoofUntil = performance.now() + 1100;
+  // iPhone: keep the city and traffic in GPU memory. Hiding then showing them in one
+  // frame OOMs Safari, the tab reloads, and the save still has you in the house.
+  if (!phone) {
+    for (const name of ['parked-cars', 'traffic', 'pedestrians', 'taxi-stands']) {
+      const g = scene.getObjectByName(name);
+      if (g) g.visible = !enabled;
     }
-    cityRoot.visible = false;
-    dimSunForInterior(house, scene);
-  } else {
-    cityRoot.visible = true;
-    const prev = house.userData.prevParent as THREE.Object3D | undefined;
-    if (prev) prev.attach(house);
-    house.userData.prevParent = undefined;
-    restoreOutdoorAtmosphere(scene);
-    const sun = scene.children.find((c) => c instanceof THREE.DirectionalLight) as THREE.DirectionalLight | undefined;
-    if (sun && house.userData.prevSunIntensity != null) {
-      sun.intensity = house.userData.prevSunIntensity as number;
-      sun.color.setHex(0xffe0ac);
+    if (enabled) {
+      if (house.parent !== scene) {
+        house.userData.prevParent = house.parent;
+        scene.attach(house);
+      }
+      cityRoot.visible = false;
+      dimSunForInterior(house, scene);
+    } else {
+      cityRoot.visible = true;
+      const prev = house.userData.prevParent as THREE.Object3D | undefined;
+      if (prev) prev.attach(house);
+      house.userData.prevParent = undefined;
+      restoreOutdoorAtmosphere(scene);
+      const sun = scene.children.find((c) => c instanceof THREE.DirectionalLight) as THREE.DirectionalLight | undefined;
+      if (sun && house.userData.prevSunIntensity != null) {
+        sun.intensity = house.userData.prevSunIntensity as number;
+        sun.color.setHex(0xffe0ac);
+      }
     }
   }
 }
@@ -676,12 +682,30 @@ export function refreshHomeInteriorLook(houseRoot: THREE.Object3D, scene: THREE.
       ? (houseRoot as THREE.Group)
       : (houseRoot.getObjectByName('landmark-player-house') as THREE.Group | null);
   if (!house || !house.userData.homeMode) return;
+  if (document.documentElement.classList.contains('is-phone')) return;
   dimSunForInterior(house, scene);
+}
+
+export function revealHouseRoof(houseRoot: THREE.Object3D): void {
+  const house =
+    houseRoot.name === 'landmark-player-house'
+      ? (houseRoot as THREE.Group)
+      : (houseRoot.getObjectByName('landmark-player-house') as THREE.Group | null);
+  if (!house || house.userData.homeMode) return;
+  const until = Number(house.userData.hideRoofUntil) || 0;
+  if (until && performance.now() < until) return;
+  const roof = house.userData.roof as THREE.Object3D | undefined;
+  const ceiling = house.getObjectByName('home-ceiling');
+  if (roof) roof.visible = true;
+  if (ceiling) ceiling.visible = true;
+  house.userData.hideRoofUntil = 0;
 }
 
 export function updatePlayerHouseInterior(root: THREE.Object3D, playerX: number, playerZ: number): void {
   const house = root.getObjectByName('landmark-player-house') as THREE.Group | undefined;
   if (!house || house.userData.homeMode) return;
+  const until = Number(house.userData.hideRoofUntil) || 0;
+  if (until && performance.now() < until) return;
   const roof = house.userData.roof as THREE.Object3D | undefined;
   if (roof) roof.visible = !isInsidePlayerHouse(playerX, playerZ);
 }
