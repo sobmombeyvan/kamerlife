@@ -19,68 +19,118 @@ export class MobileControls {
     this.bindButtons();
     this.sync();
     window.addEventListener('resize', this.sync);
+    window.visualViewport?.addEventListener('resize', this.sync);
+    window.visualViewport?.addEventListener('scroll', this.sync);
   }
 
   private readonly sync = (): void => {
     const show = window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 900;
     this.root.classList.toggle('visible', show);
     document.documentElement.classList.toggle('is-phone', show);
+    const vv = window.visualViewport;
+    const inset = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+    document.documentElement.style.setProperty('--vv-bottom', `${inset}px`);
   };
 
   private bindJoystick(): void {
     const joy = this.root.querySelector('#joy') as HTMLElement;
     const stick = this.root.querySelector('#stick') as HTMLElement;
     let active = false;
+    let pointerId = -1;
 
     const end = (): void => {
+      if (!active) return;
       active = false;
+      pointerId = -1;
       stick.style.transform = 'translate(0,0)';
       this.input.setMobileMove(0, 0);
     };
-
-    joy.addEventListener('pointerdown', (e) => {
-      active = true;
-      joy.setPointerCapture(e.pointerId);
-      move(e);
-    });
-    joy.addEventListener('pointermove', (e) => {
-      if (active) move(e);
-    });
-    joy.addEventListener('pointerup', end);
-    joy.addEventListener('pointercancel', end);
 
     const move = (e: PointerEvent): void => {
       const r = joy.getBoundingClientRect();
       const dx = e.clientX - (r.left + r.width / 2);
       const dy = e.clientY - (r.top + r.height / 2);
-      const lim = 34;
+      const lim = 38;
       const d = Math.max(1, Math.hypot(dx, dy));
       const nx = (dx / d) * Math.min(d, lim);
       const ny = (dy / d) * Math.min(d, lim);
       stick.style.transform = `translate(${nx}px,${ny}px)`;
       this.input.setMobileMove(nx / lim, ny / lim);
     };
+
+    joy.addEventListener(
+      'pointerdown',
+      (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        active = true;
+        pointerId = e.pointerId;
+        try {
+          joy.setPointerCapture(e.pointerId);
+        } catch {
+          /* iOS Safari can refuse capture; window listeners still track the finger. */
+        }
+        move(e);
+      },
+      { passive: false },
+    );
+
+    const onMove = (e: PointerEvent): void => {
+      if (!active || (pointerId >= 0 && e.pointerId !== pointerId)) return;
+      e.preventDefault();
+      move(e);
+    };
+    const onUp = (e: PointerEvent): void => {
+      if (pointerId >= 0 && e.pointerId !== pointerId) return;
+      end();
+    };
+
+    window.addEventListener('pointermove', onMove, { passive: false });
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    window.addEventListener('blur', end);
   }
 
   private bindButtons(): void {
     const run = this.root.querySelector('#btn-run') as HTMLButtonElement;
     const jump = this.root.querySelector('#btn-jump') as HTMLButtonElement;
     const interact = this.root.querySelector('#btn-interact') as HTMLButtonElement;
+    let runId = -1;
     const setRun = (v: boolean): void => this.input.setMobileRun(v);
-    run.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      setRun(true);
-    });
-    run.addEventListener('pointerup', () => setRun(false));
-    run.addEventListener('pointercancel', () => setRun(false));
-    run.addEventListener('pointerleave', () => setRun(false));
-    jump.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      this.input.queueJump();
-    });
-    interact.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      this.input.queueInteract();
-    });
+    const tap = (el: HTMLElement, fn: () => void) => {
+      el.addEventListener(
+        'pointerdown',
+        (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          fn();
+        },
+        { passive: false },
+      );
+    };
+    run.addEventListener(
+      'pointerdown',
+      (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        runId = e.pointerId;
+        setRun(true);
+        try {
+          run.setPointerCapture(e.pointerId);
+        } catch {
+          /* tracked via window */
+        }
+      },
+      { passive: false },
+    );
+    const endRun = (e: PointerEvent): void => {
+      if (runId < 0 || e.pointerId !== runId) return;
+      runId = -1;
+      setRun(false);
+    };
+    window.addEventListener('pointerup', endRun);
+    window.addEventListener('pointercancel', endRun);
+    tap(jump, () => this.input.queueJump());
+    tap(interact, () => this.input.queueInteract());
   }
 }

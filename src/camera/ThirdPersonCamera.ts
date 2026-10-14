@@ -21,7 +21,7 @@ type Framing = { pitch: number; dist: number; fov: number; lookH: number; camH: 
 /** Pitch, distance and lens per indoor framing. */
 const HOME_FRAMING: Record<HomeView, Framing> = {
   plan: { pitch: 1.52, dist: 20, fov: 46, lookH: 0.35, camH: 0.15, focus: 1 },
-  iso: { pitch: 0.86, dist: 13.5, fov: 48, lookH: 1.0, camH: 0.5, focus: 0.55 },
+  iso: { pitch: 0.86, dist: 11.5, fov: 50, lookH: 1.0, camH: 0.5, focus: 0 },
   shoulder: { pitch: 0.26, dist: 4.6, fov: 58, lookH: 1.45, camH: 1.5, focus: 0 },
 };
 

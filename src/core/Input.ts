@@ -225,9 +225,9 @@ export class Input {
     if (this.pointerLocked) return;
     const phone = document.documentElement.classList.contains('is-phone');
     if (!this.blockPointerLock) {
-      // Leave space for joystick (left) and action buttons (bottom-right)
-      if (e.clientX < window.innerWidth * (phone ? 0.34 : 0.38)) return;
-      if (phone && e.clientY > window.innerHeight * 0.72 && e.clientX > window.innerWidth * 0.55) return;
+      // Leave the whole bottom strip and left third for the joystick / E / RUN.
+      if (e.clientX < window.innerWidth * (phone ? 0.42 : 0.38)) return;
+      if (phone && e.clientY > window.innerHeight * 0.62) return;
     }
     this.dragging = true;
     this.downX = e.clientX;

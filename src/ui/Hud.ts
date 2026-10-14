@@ -253,6 +253,7 @@ export class Hud {
   private shopFilter: ShopFilter = 'all';
   private aerialMode = false;
   private lastPrompt = '';
+  private tipTimer = 0;
 
   constructor(parent: HTMLElement) {
     this.root = document.createElement('div');
@@ -392,6 +393,8 @@ export class Hud {
     this.needAlertEl = this.root.querySelector('#needs-alert') as HTMLElement;
     this.controlsEl = this.root.querySelector('#hud-controls') as HTMLElement;
     this.setControls('walk');
+    const vitals = this.root.querySelector('#hud-vitals') as HTMLElement;
+    vitals.addEventListener('click', () => vitals.classList.toggle('expanded'));
     for (const { key } of NEEDS) {
       this.bars[key] = this.root.querySelector(`[data-bar="${key}"]`) as HTMLElement;
       this.needVals[key] = this.root.querySelector(`[data-val="${key}"]`) as HTMLElement;
@@ -496,6 +499,11 @@ export class Hud {
   setTip(text: string): void {
     if (this.tipEl.textContent === text) return;
     this.tipEl.textContent = text;
+    this.tipEl.classList.remove('tip-gone');
+    window.clearTimeout(this.tipTimer);
+    if (document.documentElement.classList.contains('is-phone') && text) {
+      this.tipTimer = window.setTimeout(() => this.tipEl.classList.add('tip-gone'), 3200);
+    }
   }
 
   /** Swaps the bottom legend for the keys that actually do something right now. */
@@ -589,7 +597,8 @@ export class Hud {
     }
     if (this.lastPrompt === text) return;
     this.lastPrompt = text;
-    this.promptEl.innerHTML = text;
+    const phone = document.documentElement.classList.contains('is-phone');
+    this.promptEl.innerHTML = phone ? text.replace(/<kbd>[^<]*<\/kbd>\s*/g, '') : text;
     this.promptEl.classList.remove('hidden');
   }
 

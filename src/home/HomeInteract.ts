@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { CollisionSystem } from '../world/CollisionSystem';
-import { FRONT_DOOR, HOME_SHELL } from './homeLayout';
+import { FRONT_DOOR, HOME_FLOOR_TOP, HOME_SHELL } from './homeLayout';
+import { PLAYER_HOUSE } from '../landmarks/PlayerHouse';
 import { HomeKit } from './homeKit';
 import type { OutfitId } from '../player/PlayerOutfits';
 import type { NeedActivity } from '../sim/PlayerNeeds';
@@ -96,7 +97,7 @@ export function nearestHomeSpot(x: number, z: number, spots: HomeSpot[]): HomeSp
 export function tipForSpot(spot: HomeSpot, doorOpen: boolean): string {
   switch (spot.kind) {
     case 'door':
-      return doorOpen ? 'E = fermer la porte' : 'E = ouvrir la porte (pour sortir / entrer)';
+      return doorOpen ? 'E = sortir / entrer' : 'E = ouvrir et passer la porte';
     case 'sleep':
       return 'E = dormir (énergie ↑ · heure Yaoundé réelle)';
     case 'cook':
@@ -208,10 +209,21 @@ export function runHomeAction(
 
   switch (kind) {
     case 'door': {
-      const open = toggleHomeDoor(houseRoot, collisions);
-      return {
-        tip: open ? 'Porte ouverte — tu peux sortir ou entrer' : 'Porte fermée — ouvre-la pour sortir',
-      };
+      const pivot = houseRoot.getObjectByName('home-door-pivot');
+      if (!pivot) return null;
+      setHomeDoorOpen(pivot, collisions, true);
+      const { cx, cz, interiorHalfW, interiorHalfD, doorOutside } = PLAYER_HOUSE;
+      const inside =
+        Math.abs(player.position.x - cx) < interiorHalfW - 0.35 &&
+        Math.abs(player.position.z - cz) < interiorHalfD - 0.35;
+      if (inside) {
+        player.position.set(doorOutside.x, 0, doorOutside.z);
+        player.rotation.y = 0;
+        return { tip: 'Tu sors' };
+      }
+      player.position.set(cx + FRONT_DOOR.x, HOME_FLOOR_TOP, cz + HOME_SHELL.innerD / 2 - 1.15);
+      player.rotation.y = Math.PI;
+      return { tip: 'Tu rentres' };
     }
     case 'sleep':
       // Lie on the back, feet toward the foot of the bed

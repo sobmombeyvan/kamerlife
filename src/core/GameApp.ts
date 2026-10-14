@@ -176,6 +176,7 @@ export class GameApp {
   private readonly cockpitLook = new THREE.Vector3();
   private homeView: HomeView = 'iso';
   private homeBusy = 0;
+  private exitHouseGrace = 0;
   private pendingActivity: NeedActivity | null = null;
   private busyLabel: string | null = null;
   private lastJobPay = 0;
@@ -328,6 +329,18 @@ export class GameApp {
     const mapClick = this.input.consumeClick();
     if (mapClick && this.cityMap.isOpen() && this.aerial.active) this.pickMapGround(mapClick);
 
+    if (this.exitHouseGrace > 0) this.exitHouseGrace = Math.max(0, this.exitHouseGrace - dt);
+
+    if (this.homeBusy > 0) {
+      const stick = this.input.getMoveAxes();
+      if (Math.hypot(stick.x, stick.z) > 0.4) {
+        if (this.activity.active) this.activity.stop(this.player.object);
+        this.homeBusy = 0;
+        this.pendingActivity = null;
+        this.busyLabel = null;
+        this.hud.setTip('Tu bouges');
+      }
+    }
     if (this.homeBusy > 0) {
       this.homeBusy = Math.max(0, this.homeBusy - dt);
       if (this.activity.active) this.activity.update(this.player.object, dt);
@@ -474,24 +487,23 @@ export class GameApp {
         if (inside && !this.wasInsideHome) {
           this.enterHomeMode();
           this.audio.playUi();
-          this.hud.setTip('Vue du haut — maintiens le clic sur un meuble et glisse-le');
+          this.hud.setTip('Chez toi — E à la porte pour sortir');
         } else if (!inside && this.wasInsideHome) {
           this.exitHomeMode();
-          this.hud.setTip('Dehors — ta Jetour est dans l’allée · E pour conduire');
+          this.exitHouseGrace = 2.2;
+          this.hud.setTip('Dehors — joystick pour marcher · E à la porte pour rentrer');
         }
         this.wasInsideHome = inside;
 
         const inMall = !inside && isInsideMfoundiMall(p.x, p.z);
         if (inMall && !this.wasInsideMall) {
-          this.hud.notify('Mfoundi Mall — RDC Apple · étage boutiques · jobs à l’accueil');
-          this.hud.setTip('Balade-toi · E au vendeur · escalier pour l’étage');
+          this.hud.setTip('Mall — E au vendeur · escalier pour l’étage');
         }
         this.wasInsideMall = inMall;
 
         const inSanta = !inside && !inMall && isInsideSantaLucia(p.x, p.z);
         if (inSanta && !this.wasInsideSanta) {
-          this.hud.notify('Santa Lucia — RDC courses · étage ménage / textile');
-          this.hud.setTip('Escalier à gauche · E pour acheter');
+          this.hud.setTip('Santa Lucia — E pour acheter · escalier à gauche');
         }
         if (this.santaRoot) {
           setSantaRoofVisible(this.santaRoot, !inSanta || this.homeView === 'shoulder');
@@ -500,7 +512,6 @@ export class GameApp {
 
         const inVenue = !inside && !inMall && !inSanta ? venueAt(p.x, p.z) : null;
         if (inVenue && !inVenue.restricted && this.wasVenueId !== inVenue.id) {
-          this.hud.notify(inVenue.name);
           this.hud.setTip(inVenue.enterTip);
         }
         for (const v of VENUES) {
@@ -518,8 +529,9 @@ export class GameApp {
             ? {
                 isometric: true,
                 homeView: this.furniture.enabled ? 'plan' : this.homeView,
-                focusX: PLAYER_HOUSE.cx,
-                focusZ: PLAYER_HOUSE.cz,
+                ...(this.homeView === 'plan' || this.furniture.enabled
+                  ? { focusX: PLAYER_HOUSE.cx, focusZ: PLAYER_HOUSE.cz }
+                  : {}),
                 roomHalfW: PLAYER_HOUSE.interiorHalfW - 0.5,
                 roomHalfD: PLAYER_HOUSE.interiorHalfD - 0.5,
                 roomHeight: 2.5,
@@ -533,8 +545,8 @@ export class GameApp {
         const district = findDistrictAt(p.x, p.z);
         const landmark = nearestLandmark(p.x, p.z, 70);
         const stand = this.taxis.nearestStand(p.x, p.z, 9);
-        const saleCar = this.parked.nearestForSale(p.x, p.z, 5.2);
-        const nearCar = this.parked.nearest(p.x, p.z, 5.5);
+        const saleCar = this.exitHouseGrace > 0 ? null : this.parked.nearestForSale(p.x, p.z, 5.2);
+        const nearCar = this.exitHouseGrace > 0 ? null : this.parked.nearest(p.x, p.z, 5.5);
         const outsideDoor = nearOutsideDoor(
           p.x,
           p.z,
@@ -562,7 +574,7 @@ export class GameApp {
             clothes: 'Change d’habits…',
             work: 'Travaille…',
           };
-          this.hud.setTip(this.busyLabel ?? labels[k] ?? '…');
+          this.hud.setTip(`${this.busyLabel ?? labels[k] ?? '…'} · joystick pour arrêter`);
           this.hud.setPrompt(null);
         } else if (inside && this.furniture.isCarrying && !uiBlocking) {
           this.hud.setDistrict(PLAYER_HOUSE.name);
@@ -570,8 +582,8 @@ export class GameApp {
           this.hud.setPrompt(null);
         } else if (inside && spot && !uiBlocking) {
           this.hud.setDistrict(PLAYER_HOUSE.name);
-          this.hud.setTip(`${tipForSpot(spot, doorOpen)} · V change la vue`);
-          this.hud.setPrompt(`<kbd>E</kbd> ${spot.label}`);
+          this.hud.setTip(tipForSpot(spot, doorOpen));
+          this.hud.setPrompt(`<kbd>E</kbd> ${spot.kind === 'door' ? 'Sortir' : spot.label}`);
         } else if (inside && !uiBlocking) {
           this.hud.setDistrict(PLAYER_HOUSE.name);
           this.hud.setTip(
@@ -582,8 +594,8 @@ export class GameApp {
           this.hud.setPrompt(null);
         } else if (outsideDoor && !uiBlocking) {
           this.hud.setDistrict(PLAYER_HOUSE.name);
-          this.hud.setTip(doorOpen ? 'Porte ouverte — entre' : 'Ouvre la porte pour entrer');
-          this.hud.setPrompt(doorOpen ? null : '<kbd>E</kbd> Ouvrir la porte');
+          this.hud.setTip('E pour rentrer');
+          this.hud.setPrompt('<kbd>E</kbd> Entrer');
         } else if (santaSpot && !uiBlocking) {
           this.hud.setDistrict(`Santa Lucia · ${santaSpot.name}`);
           this.hud.setTip(santaSpot.blurb);
@@ -1258,7 +1270,7 @@ export class GameApp {
     this.hud.setHomeMode(true);
     this.setHomeView(this.homeView);
     this.setFurnitureMode(false);
-    this.hud.setTip('Chez toi — V change la vue · Meubles pour déplacer · E agir');
+    this.hud.setTip('Chez toi — E à la porte pour sortir · V change la vue');
   }
 
   /** 3/4, plan, shoulder — works at home and in the street. */
@@ -1716,6 +1728,9 @@ export class GameApp {
         if (result) {
           this.audio.playConfirm();
           this.hud.setTip(result.tip);
+          if (spot.kind === 'door' && !isInsidePlayerHouse(this.player.object.position.x, this.player.object.position.z)) {
+            this.exitHouseGrace = 2.2;
+          }
           if (result.busySec) {
             this.homeBusy = result.busySec;
             this.pendingActivity = result.need ?? result.anim ?? null;
@@ -1812,7 +1827,7 @@ export class GameApp {
       return;
     }
 
-    const sale = this.parked.nearestForSale(p.x, p.z, 5.2);
+    const sale = this.exitHouseGrace > 0 ? null : this.parked.nearestForSale(p.x, p.z, 5.2);
     if (sale) {
       const price = Number(sale.mesh.userData.salePrice) || 0;
       const label = (sale.mesh.userData.saleLabel as string) || 'Voiture';
@@ -1831,7 +1846,7 @@ export class GameApp {
       return;
     }
 
-    if (this.parked.tryEnter(this.player.object)) {
+    if (this.exitHouseGrace <= 0 && this.parked.tryEnter(this.player.object)) {
       this.hud.hideTaxiMenu();
       this.taxis.closeMenu();
       this.audio.playConfirm();

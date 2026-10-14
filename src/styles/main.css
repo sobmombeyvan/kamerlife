@@ -14,6 +14,7 @@ html, body {
   margin: 0;
   width: 100%;
   height: 100%;
+  height: 100dvh;
   overflow: hidden;
   background: #0b1218;
   font-family: var(--font);
@@ -682,7 +683,7 @@ html, body {
   pointer-events: auto;
   position: absolute;
   left: max(12px, env(safe-area-inset-left));
-  bottom: calc(18px + env(safe-area-inset-bottom));
+  bottom: calc(18px + env(safe-area-inset-bottom) + var(--vv-bottom, 0px));
   width: 108px;
   height: 108px;
   border-radius: 50%;
@@ -706,7 +707,7 @@ html, body {
   pointer-events: none;
   position: absolute;
   right: max(12px, env(safe-area-inset-right));
-  bottom: calc(18px + env(safe-area-inset-bottom));
+  bottom: calc(18px + env(safe-area-inset-bottom) + var(--vv-bottom, 0px));
   display: flex;
   flex-direction: column-reverse;
   align-items: flex-end;
@@ -777,39 +778,52 @@ html, body {
 
   .tip {
     top: auto;
-    bottom: calc(140px + env(safe-area-inset-bottom));
+    bottom: calc(148px + env(safe-area-inset-bottom) + var(--vv-bottom, 0px));
     left: 50%;
     right: auto;
     transform: translateX(-50%);
     width: auto;
-    max-width: min(280px, 86vw);
+    max-width: min(240px, 78vw);
     text-align: center;
     border-left: 0;
     border-top: 2px solid var(--gold);
     font-size: 10px;
     padding: 6px 10px;
     z-index: 8;
+    transition: opacity 0.35s ease;
   }
+  .tip.tip-gone { opacity: 0; }
 
   /* FABs under topbar on the right — clear of joystick / action buttons */
   .fab-col {
-    top: calc(62px + env(safe-area-inset-top));
+    top: calc(58px + env(safe-area-inset-top));
     right: 8px;
     bottom: auto;
     flex-direction: row;
     flex-wrap: wrap;
     justify-content: flex-end;
-    max-width: 46vw;
+    max-width: 42vw;
     gap: 6px;
   }
   .map-fab {
-    min-width: 0;
-    padding: 9px 12px;
-    font-size: 11px;
-    border-radius: 12px;
+    min-width: 44px;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    font-size: 9px;
+    border-radius: 50%;
+    justify-content: center;
+    gap: 0;
   }
-  #btn-mute { min-width: 0; }
+  .map-fab .fab-txt {
+    max-width: 40px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #btn-mute { display: none; }
   .map-fab kbd { display: none; }
+  #btn-look.off { display: none; }
 
   .taxi-panel {
     width: min(340px, 94vw);
@@ -833,7 +847,7 @@ html, body {
   .joystick {
     width: 92px;
     height: 92px;
-    bottom: calc(10px + env(safe-area-inset-bottom));
+    bottom: calc(10px + env(safe-area-inset-bottom) + var(--vv-bottom, 0px));
   }
   .stick {
     width: 40px;
@@ -843,7 +857,8 @@ html, body {
   }
   .mbtn { width: 46px; height: 46px; font-size: 14px; }
   .mbtn-run { width: 44px; height: 44px; font-size: 10px; }
-  .tip { bottom: calc(108px + env(safe-area-inset-bottom)); }
+  .tip { bottom: calc(108px + env(safe-area-inset-bottom) + var(--vv-bottom, 0px)); }
+  .mbtn-col { bottom: calc(10px + env(safe-area-inset-bottom) + var(--vv-bottom, 0px)); }
   .fab-col { top: calc(52px + env(safe-area-inset-top)); }
 }
 
@@ -1601,17 +1616,36 @@ html, body {
   /* The joystick owns the bottom-left corner, so needs ride under the brand. */
   .hud-mission { display: none; }
   .hud-needs {
-    top: calc(68px + env(safe-area-inset-top));
+    pointer-events: auto;
+    top: calc(58px + env(safe-area-inset-top));
     bottom: auto;
     left: 8px;
-    width: min(300px, 50vw);
-    padding: 5px 7px 6px;
+    width: auto;
+    max-width: 46vw;
+    padding: 5px 8px;
+    cursor: pointer;
   }
-  .needs-head { margin-bottom: 4px; }
+  .hud-needs:not(.expanded) .needs-grid { display: none; }
+  .hud-needs.expanded {
+    width: min(280px, 52vw);
+    padding: 6px 8px 8px;
+  }
+  .needs-head { margin-bottom: 0; }
+  .hud-needs.expanded .needs-head { margin-bottom: 4px; }
   .needs-grid { gap: 3px 8px; }
   .vital { grid-template-columns: auto 1fr 18px; gap: 4px; }
   .v-name { gap: 3px; font-size: 8px; }
   .v-val { font-size: 8px; }
+
+  .hud-prompt {
+    bottom: calc(132px + env(safe-area-inset-bottom) + var(--vv-bottom, 0px));
+    padding: 7px 12px;
+    font-size: 12px;
+    white-space: nowrap;
+    max-width: 72vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 
   /* Keep the stats card short so the FAB row below it stays clear. */
   .hud-stats { padding: 6px 9px; min-width: 0; }
@@ -1627,7 +1661,15 @@ html, body {
   .hud-stats .mood { font-size: 10px; }
   .hud-meta { display: none; }
   .hud-brand { padding: 6px 10px; }
+  .hud-brand strong { display: none; }
   .hud-brand .hud-tz { display: none; }
   .hud-time small { font-size: 13px; }
-  .fab-col { top: calc(80px + env(safe-area-inset-top)); }
+  .hud-logo { width: 26px; height: 26px; font-size: 10px; }
+  .fab-col { top: calc(58px + env(safe-area-inset-top)); }
+  .hud-toast {
+    top: calc(8px + env(safe-area-inset-top));
+    font-size: 11px;
+    padding: 7px 12px;
+    max-width: min(280px, 70vw);
+  }
 }
