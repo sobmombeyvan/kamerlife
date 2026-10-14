@@ -1,3 +1,4 @@
+import { WorldConfig } from '../config/WorldConfig';
 import {
   applyQuality,
   deriveGraphics,
@@ -105,7 +106,7 @@ export class PauseMenu {
     this.root.innerHTML = `
       <div class="pause-panel pause-wide">
         <h2>Pause</h2>
-        <p class="pause-sub">LIFE CITY: YAOUNDÉ</p>
+        <p class="pause-sub">${WorldConfig.title}</p>
         <div class="pause-row">
           <button type="button" class="pause-btn primary" data-act="resume">Reprendre</button>
           <button type="button" class="pause-btn" data-act="save">Sauvegarder</button>

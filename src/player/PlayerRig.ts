@@ -12,6 +12,7 @@ import {
 } from './PlayerLook';
 import { applyFashion, disposeFashion } from './fashion/applyFashion';
 import { measureFit } from './fashion/fit';
+import { GraphicsConfig } from '../config/GraphicsConfig';
 
 const CLIP = {
   idle: 'Idle_Standing',
@@ -178,8 +179,9 @@ function prepareMaterials(model: THREE.Object3D, renderer?: THREE.WebGLRenderer)
     for (const mat of mats) {
       if (!(mat instanceof THREE.MeshStandardMaterial)) continue;
       mat.envMapIntensity = 0.55;
-      if (mat.map) mat.map.anisotropy = Math.min(8, maxAniso);
-      if (mat.normalMap) mat.normalMap.anisotropy = Math.min(8, maxAniso);
+      const anisoCap = GraphicsConfig.quality === 'low' ? 1 : GraphicsConfig.quality === 'medium' ? 4 : 8;
+      if (mat.map) mat.map.anisotropy = Math.min(anisoCap, maxAniso);
+      if (mat.normalMap) mat.normalMap.anisotropy = Math.min(anisoCap, maxAniso);
     }
   });
 }

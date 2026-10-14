@@ -23,6 +23,8 @@ export class Input {
   private clickQueued: { clientX: number; clientY: number } | null = null;
   private mobileMove: MoveAxes = { x: 0, z: 0 };
   private mobileRun = false;
+  private mobileLookX = 0;
+  private mobileLookY = 0;
   /** When true, click won't force pointer lock (aerial / menus). */
   blockPointerLock = false;
 
@@ -61,6 +63,12 @@ export class Input {
     this.mobileRun = v;
   }
 
+  /** Right stick. Held deflection keeps turning the camera. */
+  setMobileLook(x: number, y: number): void {
+    this.mobileLookX = clamp(x, -1, 1);
+    this.mobileLookY = clamp(y, -1, 1);
+  }
+
   queueJump(): void {
     this.jumpQueued = true;
   }
@@ -85,7 +93,11 @@ export class Input {
   }
 
   consumeLook(): { dx: number; dy: number } {
-    const out = { dx: this.mouseDx, dy: this.mouseDy };
+    const stick = this.blockPointerLock ? 0 : 1;
+    const out = {
+      dx: this.mouseDx + this.mobileLookX * 12 * stick,
+      dy: this.mouseDy + this.mobileLookY * 8 * stick,
+    };
     this.mouseDx = 0;
     this.mouseDy = 0;
     return out;

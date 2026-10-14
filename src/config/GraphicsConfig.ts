@@ -1,5 +1,8 @@
+import { safeSetItem } from '../save/storage';
+
 export type GraphicsQuality = 'low' | 'medium' | 'high' | 'ultra';
 export type ShadowQuality = 0 | 1 | 2 | 3;
+export type DeviceTier = 'desktop' | 'low' | 'mid' | 'high';
 
 const STORAGE_KEY = 'lifecity-graphics-v2';
 
@@ -38,6 +41,8 @@ export const GraphicsConfig = {
   /** Composer chain: colour grading, bloom, vignette. */
   postFx: true,
   ambientAudio: true,
+  /** Detected at launch. Not written into the graphics save. */
+  deviceTier: 'desktop' as DeviceTier,
 };
 
 const PRESETS: Record<GraphicsQuality, Partial<typeof GraphicsConfig>> = {
@@ -95,6 +100,101 @@ const PRESETS: Record<GraphicsQuality, Partial<typeof GraphicsConfig>> = {
   },
 };
 
+/** Phone caps. Applied only when the player has no saved graphics settings. */
+const PHONE_PROFILES: Record<'low' | 'mid' | 'high', Partial<typeof GraphicsConfig>> = {
+  low: {
+    quality: 'low',
+    maxPixelRatio: 1,
+    renderScale: 0.7,
+    antialias: false,
+    shadowQuality: 0,
+    viewDistance: 300,
+    vegetationDensity: 0.25,
+    npcDensity: 0.35,
+    trafficDensity: 0.4,
+    ao: false,
+    reflections: false,
+    postFx: false,
+  },
+  mid: {
+    quality: 'medium',
+    maxPixelRatio: 1.15,
+    renderScale: 0.85,
+    antialias: false,
+    shadowQuality: 1,
+    viewDistance: 420,
+    vegetationDensity: 0.5,
+    npcDensity: 0.7,
+    trafficDensity: 0.65,
+    ao: false,
+    reflections: false,
+    postFx: false,
+  },
+  high: {
+    quality: 'high',
+    maxPixelRatio: 1.5,
+    renderScale: 0.9,
+    antialias: false,
+    shadowQuality: 1,
+    viewDistance: 560,
+    vegetationDensity: 0.75,
+    npcDensity: 0.9,
+    trafficDensity: 0.85,
+    ao: false,
+    reflections: true,
+    postFx: true,
+  },
+};
+
+export function detectDeviceTier(): DeviceTier {
+  try {
+    const coarse = window.matchMedia('(pointer: coarse)').matches;
+    const touch = navigator.maxTouchPoints > 0;
+    const shortSide = Math.min(window.screen.width, window.screen.height);
+    const phoneLike = coarse || (touch && shortSide <= 900);
+    if (!phoneLike) return 'desktop';
+
+    const nav = navigator as Navigator & {
+      deviceMemory?: number;
+      connection?: { saveData?: boolean; effectiveType?: string };
+    };
+    const mem = nav.deviceMemory;
+    const cores = nav.hardwareConcurrency ?? 0;
+    const effective = nav.connection?.effectiveType;
+    const slow = nav.connection?.saveData === true || effective === 'slow-2g' || effective === '2g';
+    if (slow || (typeof mem === 'number' && mem <= 2)) return 'low';
+    if (typeof mem === 'number') {
+      if (mem <= 4 && cores > 0 && cores <= 4) return 'low';
+      if (mem <= 4) return 'mid';
+      if (mem >= 8 && cores >= 8) return 'high';
+      return 'mid';
+    }
+    if (cores >= 8) return 'high';
+    if (shortSide <= 340) return 'low';
+    return 'mid';
+  } catch {
+    return 'desktop';
+  }
+}
+
+function applyPhoneProfile(tier: 'low' | 'mid' | 'high'): void {
+  GraphicsConfig.quality = PHONE_PROFILES[tier].quality ?? 'medium';
+  Object.assign(GraphicsConfig, PHONE_PROFILES[tier]);
+  deriveGraphics();
+}
+
+function applyAutomaticQuality(): void {
+  if (GraphicsConfig.deviceTier === 'desktop') applyQuality('medium');
+  else applyPhoneProfile(GraphicsConfig.deviceTier);
+}
+
+/** WebGL power hint. Low presets avoid heating small phones. */
+export function rendererPowerPreference(): 'high-performance' | 'low-power' | 'default' {
+  if (GraphicsConfig.quality === 'low') return 'low-power';
+  if (GraphicsConfig.quality === 'medium' && GraphicsConfig.deviceTier !== 'desktop') return 'default';
+  return 'high-performance';
+}
+
 /** Derive dependent values (shadow map, fog, far plane) from the primary settings. */
 export function deriveGraphics(): void {
   const g = GraphicsConfig;
@@ -142,14 +242,17 @@ const SAVED_KEYS = [
 export function saveGraphicsSettings(): void {
   const out: Record<string, unknown> = {};
   for (const k of SAVED_KEYS) out[k] = GraphicsConfig[k];
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(out));
+  if (!safeSetItem(STORAGE_KEY, JSON.stringify(out))) {
+    console.warn('[graphics] réglages non enregistrés');
+  }
 }
 
 export function loadGraphicsSettings(): void {
+  GraphicsConfig.deviceTier = detectDeviceTier();
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      applyQuality('medium');
+      applyAutomaticQuality();
       return;
     }
     const p = JSON.parse(raw) as Partial<typeof GraphicsConfig>;
@@ -172,7 +275,7 @@ export function loadGraphicsSettings(): void {
     if (typeof p.ambientAudio === 'boolean') g.ambientAudio = p.ambientAudio;
     deriveGraphics();
   } catch {
-    applyQuality('medium');
+    applyAutomaticQuality();
   }
 }
 

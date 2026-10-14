@@ -2,7 +2,7 @@
  * Central world settings. Add districts / assets here without touching systems.
  */
 export const WorldConfig = {
-  title: 'LIFE CITY: YAOUNDÉ',
+  title: 'KAMERLIFE',
   version: '0.6.0-living-city',
   worldScale: 1,
   unitMeters: 1,

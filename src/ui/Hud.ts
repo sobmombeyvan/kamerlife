@@ -261,7 +261,7 @@ export class Hud {
     this.root.innerHTML = `
       <div class="hud-top">
         <div class="hud-brand">
-          <div class="hud-logo">LC</div>
+          <div class="hud-logo">K</div>
           <div class="hud-brand-txt">
             <strong>${WorldConfig.title}</strong>
             <div class="hud-time">

@@ -4,6 +4,8 @@ import type { GraphicsQuality } from '../config/GraphicsConfig';
 import type { PlayerLook } from '../player/PlayerLook';
 import type { SavedOutfit } from '../player/Wardrobe';
 
+import { safeSetItem } from './storage';
+
 const KEY = 'lifecity-gamesave-v2';
 const LEGACY_KEY = 'lifecity-gamesave-v1';
 
@@ -77,9 +79,10 @@ export function loadGameSave(): GameSaveData | null {
   }
 }
 
-export function writeGameSave(data: Omit<GameSaveData, 'version' | 'savedAt'>): void {
+/** Keeps the existing lifecity-gamesave keys. Returns false if the write did not land. */
+export function writeGameSave(data: Omit<GameSaveData, 'version' | 'savedAt'>): boolean {
   const full: GameSaveData = { ...data, version: 3, savedAt: Date.now() };
-  localStorage.setItem(KEY, JSON.stringify(full));
+  return safeSetItem(KEY, JSON.stringify(full));
 }
 
 export function clearGameSave(): void {

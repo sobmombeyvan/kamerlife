@@ -338,11 +338,13 @@ export class PedestrianSystem {
     this.setDensity(density);
   }
 
-  preload(): Promise<void> {
+  /** Player rig loads first. Street characters stream in afterwards, one model at a time. */
+  preload(): Promise<boolean> {
     return ensureNpcKit().then((kit) => {
-      if (!kit) return;
+      if (!kit) return false;
       this.crowd.setKit(kit);
       dressPendingNpcs(kit);
+      return true;
     });
   }
 

@@ -128,6 +128,18 @@ import {
 /** Vehicles kept around the player at traffic density ×1. */
 const TRAFFIC_BASE = 80;
 
+function paintFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
 export class GameApp {
   private engine!: Engine;
   private input!: Input;
@@ -139,6 +151,7 @@ export class GameApp {
   private phone!: PhoneUI;
   private pauseMenu!: PauseMenu;
   private dialogue!: DialogueUI;
+  private mobile!: MobileControls;
   private pedestrians!: PedestrianSystem;
   private traffic!: TrafficSystem;
   private readonly trafficObstacles = [{ x: 0, z: 0, r: 0.5 }];
@@ -186,6 +199,7 @@ export class GameApp {
   private social = new SocialMemory();
   /** Real timestamp (ms) of last finished job — cooldown independent of clock. */
   private lastJobAt = 0;
+  private saveBlocked = false;
   private fpsWarnTimer = 0;
   private fpsLowStreak = 0;
   private fpsAutoDropped = false;
@@ -202,9 +216,14 @@ export class GameApp {
     private readonly uiRoot: HTMLElement,
   ) {}
 
-  start(): void {
+  async start(onBoot?: (label: string, ratio: number) => void): Promise<void> {
+    const boot = (label: string, ratio: number): void => onBoot?.(label, ratio);
+    boot('Moteur…', 0.12);
+    await paintFrame();
     this.engine = new Engine(this.canvas);
     this.input = new Input(this.canvas);
+    boot('Ville proche…', 0.28);
+    await paintFrame();
     this.cityRoot = buildBootstrapWorld(this.engine.scene, this.collisions);
     this.chunks = this.cityRoot.userData.chunks as CityChunks;
     this.houseRoot = this.cityRoot.getObjectByName('landmark-player-house') as THREE.Group | null;
@@ -229,6 +248,7 @@ export class GameApp {
     this.furniture.onRemove = (id) => this.storeFurnitureItem(id);
     const npcDens = 1.15 * GraphicsConfig.npcDensity;
     const trafficCount = Math.round(TRAFFIC_BASE * GraphicsConfig.trafficDensity);
+    boot('Véhicules et passants proches…', 0.5);
     const plan = this.cityRoot.userData.plan as CityPlan;
     this.pedestrians = new PedestrianSystem(this.engine.scene, npcDens, (x, z) => plan.zoneAt(x, z));
     this.density = new DensityOverlay(this.uiRoot, plan);
@@ -248,13 +268,6 @@ export class GameApp {
 
     const avatar = createPlayerAvatar();
     this.engine.scene.add(avatar);
-    void mountRiggedPlayer(avatar, this.engine.renderer).then((ok) => {
-      if (!ok) {
-        applyAppearance(avatar);
-        this.hud.notify('Modèle du personnage introuvable — avatar de secours', 5000);
-      }
-      void this.pedestrians.preload();
-    });
 
     this.cameraRig = new ThirdPersonCamera(this.engine.camera, this.input);
     this.cameraRig.setCollisions(this.collisions);
@@ -268,13 +281,18 @@ export class GameApp {
     this.phone = new PhoneUI(this.uiRoot);
     this.pauseMenu = new PauseMenu(this.uiRoot);
     this.dialogue = new DialogueUI(this.uiRoot);
-    new MobileControls(this.uiRoot, this.input);
+    this.mobile = new MobileControls(this.uiRoot, this.input);
 
     this.restoreSave();
     this.hud.setMoney(this.money);
     this.hud.setNeeds(this.needs.snapshot(), this.needs.moodLabel());
     this.hud.setDistrict(PLAYER_HOUSE.name);
-    this.hud.setTip('WASD · E interagir · P téléphone · Esc pause');
+    const phone = document.documentElement.classList.contains('is-phone');
+    this.hud.setTip(
+      phone
+        ? 'Stick gauche : marcher · stick droit : caméra · E interagir'
+        : 'WASD · E interagir · P téléphone · Esc pause',
+    );
     this.hud.setMission(`Ville vivante · ${this.pedestrians.count} PNJ · ${this.traffic.count} véhicules`);
     this.hud.onOpenMap(() => {
       this.audio.playUi();
@@ -299,11 +317,26 @@ export class GameApp {
 
     this.hud.notify(`Vie Sims · mange, dors, travaille, socialise`);
     this.hud.setMission('Satisfais tes besoins · gagne des FCFA');
+    boot('Quartier autour de toi…', 0.78);
+    await paintFrame();
     this.chunks.warm(this.player.object.position.x, this.player.object.position.z);
     this.lastVegetation = GraphicsConfig.vegetationDensity;
     if (import.meta.env.DEV) this.installDevHooks();
     this.running = true;
     this.loop();
+    boot('Personnage…', 0.9);
+    const mounted = mountRiggedPlayer(avatar, this.engine.renderer).then((ok) => {
+      if (!ok) {
+        applyAppearance(avatar);
+        this.hud.notify('Modèle du personnage introuvable — avatar de secours', 5000);
+      }
+      void this.pedestrians.preload().then((ready) => {
+        if (!ready) this.hud.notify('Modèles des passants indisponibles — silhouettes de secours', 5000);
+      });
+      return ok;
+    });
+    await Promise.race([mounted, delay(28000).then(() => false)]);
+    boot('Prêt', 1);
   }
 
   private loop = (): void => {
@@ -406,6 +439,7 @@ export class GameApp {
     if (!uiBlocking && this.wasInsideHome && furnitureKey) this.toggleFurniture();
     if (!uiBlocking && !this.aerial.active && viewKey) this.cycleHomeView();
     const driving = this.parked.driving;
+    this.mobile.setActivity(driving ? 'drive' : 'walk');
     const busy = this.homeBusy > 0;
 
     if (this.aerial.active) {
@@ -458,10 +492,15 @@ export class GameApp {
         const carLabel = (this.parked.activeMesh?.userData.label as string) || 'Voiture';
         this.hud.setDistrict(`Au volant · ${carLabel}`);
         this.hud.setPrompt(null);
+        const phone = document.documentElement.classList.contains('is-phone');
         this.hud.setTip(
           this.homeView === 'shoulder'
-            ? 'Cockpit — WASD · Shift turbo · V autres vues · E sortir'
-            : 'WASD conduire · Shift turbo · V cockpit · E sortir',
+            ? phone
+              ? 'Cockpit — stick pour conduire · Turbo · E sortir'
+              : 'Cockpit — WASD · Shift turbo · V autres vues · E sortir'
+            : phone
+              ? 'Stick : gaz et direction · caméra à droite · Turbo · E sortir'
+              : 'WASD conduire · Shift turbo · V cockpit · E sortir',
         );
         this.hud.setControls('drive');
       } else if (!ride.riding && !this.editor.isActive() && !uiBlocking) {
@@ -785,13 +824,7 @@ export class GameApp {
     this.player.object.position.set(save.x, save.y, save.z);
     this.player.object.rotation.y = save.yaw;
     this.cameraRig.yaw = save.yaw;
-    if (save.look) {
-      const before = loadLook().characterId;
-      saveLook(save.look);
-      if (loadLook().characterId !== before) {
-        void mountRiggedPlayer(this.player.object, this.engine.renderer, loadLook().characterId);
-      }
-    }
+    if (save.look) saveLook(save.look);
     if (save.wardrobe) replaceWardrobe(save.wardrobe);
     if (save.fashionOwned) replaceOwned(save.fashionOwned);
     this.parked.applyOwned(save.ownedCars);
@@ -799,7 +832,7 @@ export class GameApp {
 
   private saveGame(silent = false): void {
     const p = this.player.object;
-    writeGameSave({
+    const ok = writeGameSave({
       money: this.money,
       x: p.position.x,
       y: p.position.y,
@@ -815,6 +848,14 @@ export class GameApp {
       fashionOwned: ownedItems(),
       ownedCars: this.parked.serializeOwned(),
     });
+    if (!ok) {
+      if (!this.saveBlocked) {
+        this.saveBlocked = true;
+        this.hud.notify('Sauvegarde impossible — stockage plein. La partie en cours continue.');
+      }
+      return;
+    }
+    this.saveBlocked = false;
     if (!silent) {
       this.hud.notify('Partie sauvegardée');
       this.audio.playConfirm();
@@ -1151,7 +1192,12 @@ export class GameApp {
         };
       },
       onQuitHint: () => {
-        this.hud.notify('E interagir · P téléphone · Esc pause · M carte · V change la vue · F3 perfs · F4 densité');
+        const phone = document.documentElement.classList.contains('is-phone');
+        this.hud.notify(
+          phone
+            ? 'Stick gauche marcher ou conduire · stick droit caméra · E interagir · Esc pause'
+            : 'E interagir · P téléphone · Esc pause · M carte · V change la vue · F3 perfs · F4 densité',
+        );
       },
     });
   }

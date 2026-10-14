@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GraphicsConfig } from '../config/GraphicsConfig';
+import { GraphicsConfig, rendererPowerPreference } from '../config/GraphicsConfig';
 import {
   applyOutdoorAtmosphere,
   fitSkyToCamera,
@@ -45,7 +45,7 @@ export class Engine {
     this.renderer = new THREE.WebGLRenderer({
       canvas,
       antialias: GraphicsConfig.antialias && !GraphicsConfig.postFx,
-      powerPreference: 'high-performance',
+      powerPreference: rendererPowerPreference(),
       stencil: false,
       depth: true,
     });

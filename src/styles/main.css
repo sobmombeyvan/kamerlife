@@ -735,6 +735,37 @@ html, body {
   letter-spacing: 0.5px;
 }
 
+.look-joy {
+  left: auto;
+  right: max(78px, calc(env(safe-area-inset-right) + 72px));
+  width: 92px;
+  height: 92px;
+  bottom: calc(28px + env(safe-area-inset-bottom) + var(--vv-bottom, 0px));
+}
+
+.look-joy .stick {
+  width: 40px;
+  height: 40px;
+  left: 26px;
+  top: 26px;
+}
+
+.joy-caption {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 4px);
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #e7f2ec;
+  text-shadow: 0 1px 2px #000;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+#mobile-controls.is-drive #btn-jump { display: none; }
+
 #btn-interact {
   background: linear-gradient(145deg, #2a6b55, #1a4034);
   border: 1px solid var(--line);
@@ -857,6 +888,13 @@ html, body {
   }
   .mbtn { width: 46px; height: 46px; font-size: 14px; }
   .mbtn-run { width: 44px; height: 44px; font-size: 10px; }
+  .look-joy {
+    width: 78px;
+    height: 78px;
+    right: max(64px, calc(env(safe-area-inset-right) + 58px));
+    bottom: calc(12px + env(safe-area-inset-bottom) + var(--vv-bottom, 0px));
+  }
+  .look-joy .stick { width: 34px; height: 34px; left: 22px; top: 22px; }
   .tip { bottom: calc(108px + env(safe-area-inset-bottom) + var(--vv-bottom, 0px)); }
   .mbtn-col { bottom: calc(10px + env(safe-area-inset-bottom) + var(--vv-bottom, 0px)); }
   .fab-col { top: calc(52px + env(safe-area-inset-top)); }
@@ -896,7 +934,7 @@ html, body {
   background: linear-gradient(145deg, #d4a84b, #8a5a22);
   color: #14110c;
   font-weight: 800;
-  font-size: 12px;
+  font-size: 16px;
 }
 .hud-brand strong { display: block; font-size: 11px; letter-spacing: 0.04em; font-weight: 700; }
 .hud-brand small { display: block; color: #9aa8b5; font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -1664,12 +1702,63 @@ html, body {
   .hud-brand strong { display: none; }
   .hud-brand .hud-tz { display: none; }
   .hud-time small { font-size: 13px; }
-  .hud-logo { width: 26px; height: 26px; font-size: 10px; }
+  .hud-logo { width: 26px; height: 26px; font-size: 13px; }
   .fab-col { top: calc(58px + env(safe-area-inset-top)); }
   .hud-toast {
     top: calc(8px + env(safe-area-inset-top));
     font-size: 11px;
     padding: 7px 12px;
     max-width: min(280px, 70vw);
+  }
+}
+
+#pwa-banners {
+  position: fixed;
+  z-index: 70;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  width: min(440px, calc(100vw - 16px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.pwa-card {
+  pointer-events: auto;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(8, 16, 22, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 28px #00000055;
+  color: #f2f4f7;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.pwa-card strong {
+  display: block;
+  letter-spacing: 0.12em;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+.pwa-card p { margin: 0; }
+.pwa-row { display: flex; gap: 8px; margin-top: 10px; }
+.pwa-card button {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: transparent;
+  color: #f2f4f7;
+  font-weight: 700;
+}
+.pwa-card button.primary {
+  background: linear-gradient(145deg, #d4a84b, #8a5a22);
+  color: #14110c;
+  border: 0;
+}
+@media (max-width: 900px), (pointer: coarse) {
+  #pwa-banners {
+    bottom: calc(132px + env(safe-area-inset-bottom) + var(--vv-bottom, 0px));
   }
 }
