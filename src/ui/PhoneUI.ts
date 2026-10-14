@@ -1,5 +1,5 @@
 import type { TaxiDestination } from '../vehicles/TaxiDestinations';
-import { estimateFare } from '../vehicles/TaxiDestinations';
+import { estimateFare, filterDestinations } from '../vehicles/TaxiDestinations';
 
 export type PhoneHandlers = {
   onClose: () => void;
@@ -10,6 +10,8 @@ export type PhoneHandlers = {
   getMood?: () => string;
   getNeedsSummary?: () => string;
   getClockLabel?: () => string;
+  getDistrict?: () => string;
+  getNearestPlace?: () => string;
   destinations: TaxiDestination[];
 };
 
@@ -21,8 +23,10 @@ export class PhoneUI {
   private readonly screen: HTMLElement;
   private readonly statusTime: HTMLElement;
   private handlers: PhoneHandlers | null = null;
-  private tab: 'home' | 'yango' | 'bank' | 'profile' = 'home';
+  private tab: 'home' | 'yango' | 'gps' | 'bank' | 'profile' = 'home';
   private tickId = 0;
+  private yangoQuery = '';
+  private gpsQuery = '';
 
   constructor(parent: HTMLElement) {
     this.root = document.createElement('div');
@@ -57,6 +61,8 @@ export class PhoneUI {
   show(handlers: PhoneHandlers): void {
     this.handlers = handlers;
     this.tab = 'home';
+    this.yangoQuery = '';
+    this.gpsQuery = '';
     this.render();
     this.root.classList.remove('hidden');
     if (document.pointerLockElement) document.exitPointerLock();
@@ -64,6 +70,7 @@ export class PhoneUI {
     const tick = () => {
       if (!this.isOpen()) return;
       this.statusTime.textContent = this.clockShort();
+      this.refreshGpsHere();
       this.tickId = requestAnimationFrame(tick);
     };
     this.tickId = requestAnimationFrame(tick);
@@ -111,13 +118,17 @@ export class PhoneUI {
               <span class="ios-icon yango-icon">Y</span>
               <span>Yango</span>
             </button>
-            <button type="button" class="ios-app" data-tab="bank">
-              <span class="ios-icon ios-icon-bank">₣</span>
-              <span>Wallet</span>
+            <button type="button" class="ios-app" data-tab="gps">
+              <span class="ios-icon ios-icon-gps">⊕</span>
+              <span>GPS</span>
             </button>
             <button type="button" class="ios-app" data-map>
               <span class="ios-icon ios-icon-maps">◎</span>
               <span>Plans</span>
+            </button>
+            <button type="button" class="ios-app" data-tab="bank">
+              <span class="ios-icon ios-icon-bank">₣</span>
+              <span>Wallet</span>
             </button>
             <button type="button" class="ios-app" data-tab="profile">
               <span class="ios-icon ios-icon-life">♥</span>
@@ -127,6 +138,9 @@ export class PhoneUI {
           <div class="ios-dock">
             <button type="button" class="ios-app yango-app" data-tab="yango">
               <span class="ios-icon yango-icon">Y</span>
+            </button>
+            <button type="button" class="ios-app" data-tab="gps">
+              <span class="ios-icon ios-icon-gps">⊕</span>
             </button>
             <button type="button" class="ios-app" data-map>
               <span class="ios-icon ios-icon-maps">◎</span>
@@ -138,18 +152,6 @@ export class PhoneUI {
         </div>
       `;
     } else if (this.tab === 'yango') {
-      const pos = h.getPlayerPos();
-      const rows = h.destinations
-        .slice(0, 14)
-        .map((d) => {
-          const fare = estimateFare(pos.x, pos.z, d);
-          return `<button type="button" class="yango-row" data-dest="${d.id}">
-            <span class="yango-pin"></span>
-            <span class="yango-dest"><strong>${d.name}</strong><small>Course · Yaoundé</small></span>
-            <em>${fare.toLocaleString('fr-FR')} F</em>
-          </button>`;
-        })
-        .join('');
       this.screen.innerHTML = `
         <div class="yango-app-screen">
           <div class="yango-top">
@@ -157,8 +159,26 @@ export class PhoneUI {
             <div class="yango-brand"><span class="yango-logo">Yango</span></div>
           </div>
           <p class="yango-hello">Où allez-vous ?</p>
-          <p class="yango-sub">Courses en ville · paiement FCFA</p>
-          <div class="yango-list">${rows}</div>
+          <p class="yango-sub">${h.destinations.length} lieux · Yaoundé</p>
+          <input type="search" class="yango-search" data-yango-q placeholder="Quartier, mall, stade…" value="${escapeAttr(this.yangoQuery)}" autocomplete="off" />
+          <div class="yango-list">${this.destRows(h, this.yangoQuery)}</div>
+        </div>
+      `;
+    } else if (this.tab === 'gps') {
+      const pos = h.getPlayerPos();
+      this.screen.innerHTML = `
+        <div class="gps-app-screen">
+          <div class="yango-top">
+            <button type="button" class="yango-back" data-back>‹</button>
+            <div class="yango-brand"><span class="gps-logo">GPS</span></div>
+          </div>
+          <div class="gps-here" id="gps-here">
+            <small>Vous êtes ici</small>
+            <strong>${h.getDistrict?.() ?? 'Yaoundé'}</strong>
+            <p>${Math.round(pos.x)}, ${Math.round(pos.z)} · ${h.getNearestPlace?.() ?? '—'}</p>
+          </div>
+          <input type="search" class="yango-search" data-gps-q placeholder="Chercher un lieu…" value="${escapeAttr(this.gpsQuery)}" autocomplete="off" />
+          <div class="yango-list">${this.destRows(h, this.gpsQuery, true)}</div>
         </div>
       `;
     } else if (this.tab === 'bank') {
@@ -212,5 +232,70 @@ export class PhoneUI {
         }
       });
     });
+    const yangoQ = this.screen.querySelector('[data-yango-q]') as HTMLInputElement | null;
+    yangoQ?.addEventListener('input', () => {
+      this.yangoQuery = yangoQ.value;
+      const list = this.screen.querySelector('.yango-list');
+      if (list) list.innerHTML = this.destRows(h, this.yangoQuery);
+      this.bindDestClicks(h);
+    });
+    const gpsQ = this.screen.querySelector('[data-gps-q]') as HTMLInputElement | null;
+    gpsQ?.addEventListener('input', () => {
+      this.gpsQuery = gpsQ.value;
+      const list = this.screen.querySelector('.yango-list');
+      if (list) list.innerHTML = this.destRows(h, this.gpsQuery, true);
+      this.bindDestClicks(h);
+    });
   }
+
+  private destRows(h: PhoneHandlers, query: string, gps = false): string {
+    const pos = h.getPlayerPos();
+    const shown = filterDestinations(h.destinations, query);
+    if (!shown.length) return `<p class="yango-sub">Aucun lieu</p>`;
+    return shown
+      .map((d) => {
+        const fare = estimateFare(pos.x, pos.z, d);
+        const dist = Math.round(Math.hypot(d.x - pos.x, d.z - pos.z));
+        return `<button type="button" class="yango-row" data-dest="${d.id}">
+            <span class="yango-pin${gps ? ' gps-pin' : ''}"></span>
+            <span class="yango-dest"><strong>${escapeHtml(d.name)}</strong><small>${gps ? `${dist} m` : 'Course · Yaoundé'}</small></span>
+            <em>${fare.toLocaleString('fr-FR')} F</em>
+          </button>`;
+      })
+      .join('');
+  }
+
+  private bindDestClicks(h: PhoneHandlers): void {
+    this.screen.querySelectorAll('[data-dest]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = (btn as HTMLElement).dataset.dest;
+        const dest = h.destinations.find((d) => d.id === id);
+        if (dest) {
+          this.hide();
+          h.onOrderTaxi(dest);
+        }
+      });
+    });
+  }
+
+  private refreshGpsHere(): void {
+    if (this.tab !== 'gps' || !this.handlers) return;
+    const el = this.screen.querySelector('#gps-here');
+    if (!el) return;
+    const h = this.handlers;
+    const pos = h.getPlayerPos();
+    el.innerHTML = `
+      <small>Vous êtes ici</small>
+      <strong>${escapeHtml(h.getDistrict?.() ?? 'Yaoundé')}</strong>
+      <p>${Math.round(pos.x)}, ${Math.round(pos.z)} · ${escapeHtml(h.getNearestPlace?.() ?? '—')}</p>
+    `;
+  }
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+}
+
+function escapeAttr(s: string): string {
+  return escapeHtml(s);
 }

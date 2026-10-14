@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mat } from '../world/materials';
+import { drawSignFace } from '../render/designedArt';
 
 const textMatCache = new Map<string, THREE.MeshBasicMaterial>();
 
@@ -50,31 +51,17 @@ export function addTextSign(
 
   let material = textMatCache.get(key);
   if (!material) {
+    const aspect = width / Math.max(height, 0.08);
+    const ch = 256;
+    const cw = Math.min(2048, Math.max(512, Math.round(ch * aspect)));
     const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = Math.max(128, Math.round(512 * (height / Math.max(width, 0.1))));
-    const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = `#${bg.toString(16).padStart(6, '0')}`;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = '#ffffff33';
-    ctx.lineWidth = 6;
-    ctx.strokeRect(8, 8, canvas.width - 16, canvas.height - 16);
-
-    ctx.fillStyle = `#${fg.toString(16).padStart(6, '0')}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.font = `bold ${opts?.subtitle ? 52 : 64}px Arial, sans-serif`;
-    ctx.fillText(title.toUpperCase(), canvas.width / 2, opts?.subtitle ? canvas.height * 0.38 : canvas.height / 2, canvas.width - 40);
-
-    if (opts?.subtitle) {
-      ctx.font = `600 34px Arial, sans-serif`;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(opts.subtitle.toUpperCase(), canvas.width / 2, canvas.height * 0.68, canvas.width - 40);
-    }
-
+    canvas.width = cw;
+    canvas.height = ch;
+    drawSignFace(canvas.getContext('2d')!, cw, ch, title, opts?.subtitle, bg, fg);
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
-    material = new THREE.MeshBasicMaterial({ map: tex });
+    tex.anisotropy = 4;
+    material = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide });
     textMatCache.set(key, material);
   }
 

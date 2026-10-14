@@ -29,7 +29,7 @@ export function decorThumbnail(item: DecorItem): string {
     powerPreference: 'low-power',
   });
   renderer.setPixelRatio(1);
-  renderer.setSize(180, 112, false);
+  renderer.setSize(240, 150, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.1;
@@ -55,7 +55,7 @@ export function decorThumbnail(item: DecorItem): string {
   stage.rotation.y = -0.48;
 
   const maxDim = Math.max(size.x, size.y, size.z, 0.4);
-  const camera = new THREE.PerspectiveCamera(34, 180 / 112, 0.01, 100);
+  const camera = new THREE.PerspectiveCamera(34, 240 / 150, 0.01, 100);
   camera.position.set(maxDim * 1.55, maxDim * 1.1, maxDim * 2.15);
   camera.lookAt(0, 0, 0);
   renderer.render(scene, camera);

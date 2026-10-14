@@ -9,6 +9,7 @@ import {
   type TaxiStand,
 } from './TaxiDestinations';
 import { pickupStop, taxiRoute, type RoadPoint } from './RoadRoute';
+import type { CollisionSystem } from '../world/CollisionSystem';
 
 export type TaxiRideState =
   | { phase: 'idle' }
@@ -74,6 +75,18 @@ export class TaxiSystem {
       const m = this.standMeshes.get(s.id);
       if (m) m.visible = (s.x - x) ** 2 + (s.z - z) ** 2 < r2;
     }
+  }
+
+  /** The Yango that pulled up — stands are already in the parked-car list. */
+  syncPlayerBlockers(collisions: CollisionSystem): void {
+    const car = this.rideCar;
+    if (!car) {
+      collisions.clearDynamicBox('taxi-ride');
+      return;
+    }
+    const halfL = (car.userData.halfLength as number | undefined) ?? 2.05;
+    const halfW = (car.userData.halfWidth as number | undefined) ?? 1.05;
+    collisions.setVehicleBox('taxi-ride', car.position.x, car.position.z, car.rotation.y, halfL, halfW);
   }
 
   getState(): TaxiRideState {

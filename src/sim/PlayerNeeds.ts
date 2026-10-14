@@ -193,6 +193,20 @@ export class PlayerNeeds {
     }
   }
 
+  /** Combat / trespass hit. Returns true if health reached 0. */
+  takeDamage(amount: number): boolean {
+    this.health = clamp(this.health - amount, 0, 100);
+    this.stamina = clamp(this.stamina - 10, 0, 100);
+    return this.health <= 0;
+  }
+
+  applyBoost(boost?: { fun?: number; hygiene?: number; social?: number }): void {
+    if (!boost) return;
+    if (boost.fun) this.fun = clamp(this.fun + boost.fun, 0, 100);
+    if (boost.hygiene) this.hygiene = clamp(this.hygiene + boost.hygiene, 0, 100);
+    if (boost.social) this.social = clamp(this.social + boost.social, 0, 100);
+  }
+
   consume(item: 'meal' | 'snack' | 'drink' | 'coffee'): void {
     if (item === 'meal') {
       this.hunger = clamp(this.hunger + 40, 0, 100);

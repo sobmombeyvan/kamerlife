@@ -103,6 +103,71 @@ export function dialogueForRole(
       ],
     };
   }
+  if (role === 'police') {
+    return {
+      lines: [
+        warm
+          ? 'Tout calme. Si tu as un souci, tu m’appelles.'
+          : 'Police nationale. Papiers en règle, on circule.',
+      ],
+      choices: [
+        { id: 'chat', label: 'Discuter' },
+        { id: 'dir', label: 'Où est le commissariat ?' },
+        { id: 'bye', label: 'Bonne ronde' },
+      ],
+    };
+  }
+  if (role === 'business') {
+    return {
+      lines: [
+        warm
+          ? 'On se croise au Plateau ! Un café après le bureau ?'
+          : 'Réunion, appels, Yaoundé n’arrête pas. Tu bosses dans quoi ?',
+      ],
+      choices: [
+        { id: 'chat', label: 'Parler business' },
+        { id: 'bye', label: 'Bonne journée' },
+      ],
+    };
+  }
+  if (role === 'vendor') {
+    return {
+      lines: [
+        warm
+          ? 'Pour toi, prix ami. Banane, sim, chargeur — tu prends quoi ?'
+          : 'Sista, frère, viens voir ! Prix du marché.',
+      ],
+      choices: [
+        { id: 'shop', label: 'Regarder la marchandise' },
+        { id: 'chat', label: 'Discuter' },
+        { id: 'bye', label: 'Plus tard' },
+      ],
+    };
+  }
+  if (role === 'thief') {
+    return {
+      lines: [
+        warm ? 'C’est bon, c’est bon, on se connaît. Je passe mon chemin.' : 'Quoi ? J’attends quelqu’un. Circule.',
+      ],
+      choices: [
+        { id: 'chat', label: 'Insister' },
+        { id: 'bye', label: 'Laisser' },
+      ],
+    };
+  }
+  if (role === 'sex_worker') {
+    return {
+      lines: [
+        warm
+          ? 'Tu es revenu. On reste parler un moment, rien d’autre si tu veux.'
+          : 'Tu cherches de la compagnie ? On peut juste discuter.',
+      ],
+      choices: [
+        { id: 'chat', label: 'Discuter' },
+        { id: 'bye', label: 'Non merci' },
+      ],
+    };
+  }
   if (role === 'tourist') {
     return {
       lines: [

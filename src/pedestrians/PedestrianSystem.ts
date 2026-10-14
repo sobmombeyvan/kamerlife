@@ -1,11 +1,14 @@
 import * as THREE from 'three';
-import { type NpcRole } from './NpcAvatar';
+import { dressPendingNpcs, type NpcRole } from './NpcAvatar';
+import { BAKE_SLOTS, ensureNpcKit, NPC_CHARS, type BakeSlot, type NpcKit } from './NpcBake';
+import { lodColors, pickNpcName, roleOutfit, roleSpeed } from './roles';
 import { ROAD_GRID, gridAxes, isHighwayAxisX, isHighwayAxisZ } from '../roads/CityRoadPlan';
 import { landmarkGapsForRoad } from '../roads/RoadGaps';
 import { asphaltHalf } from '../city/StreetKit';
 import { hasSignal, signalState } from '../city/signals';
 import { LIFE_SPOTS } from '../sim/LifeSpots';
 import type { Zone } from '../city/CityPlan';
+import type { CharacterId } from '../player/PlayerLook';
 
 type Axis = 'x' | 'z';
 /** Waypoint. `cross`: wait for that traffic axis to be red first. `corner`: junction reached here. */
@@ -37,30 +40,23 @@ type Ped = {
   look: Look;
 };
 
-type Look = { skin: THREE.Color; shirt: THREE.Color; pants: THREE.Color; hair: THREE.Color; scale: number; hairH: number; bag: boolean };
+type Look = {
+  characterId: CharacterId;
+  role: NpcRole;
+  seed: number;
+  skin: THREE.Color;
+  shirt: THREE.Color;
+  pants: THREE.Color;
+  hair: THREE.Color;
+  shoes: THREE.Color;
+  scale: number;
+  hairH: number;
+  bag: boolean;
+};
 
 const G = ROAD_GRID;
 const CURB = 0.2;
 const WALK = 3.1;
-const SKIN_TONES = [0x5c3a24, 0x70452f, 0x8d5a3a, 0x3e2723, 0xa67c52];
-const SHIRTS = [0x167f6b, 0xc62828, 0x1565c0, 0xff8f00, 0x6a1b9a, 0xffffff, 0x37474f, 0xf9a825, 0x2e7d32, 0xad1457];
-const PANTS = [0x27364a, 0x4e342e, 0x212121, 0x455a64, 0x1b5e20, 0x3e2723];
-/** Wax-print / boubou colours worn as long dresses by part of the crowd. */
-const PAGNE = [0xe65100, 0x6a1b9a, 0x00838f, 0xc62828, 0xf9a825, 0x2e7d32];
-
-const FIRST = ['Amina', 'Jean', 'Paul', 'Marie', 'Eric', 'Fatou', 'Serge', 'Claire', 'Boris', 'Nadine', 'Yves', 'Sandra', 'Hervé', 'Brenda', 'Ulrich', 'Larissa'];
-const LAST = ['Ngono', 'Kamga', 'Mvondo', 'Atangana', 'Fouda', 'Owona', 'Essomba', 'Talla', 'Mbarga', 'Nkodo', 'Tchoua', 'Abena'];
-
-function pickNpcName(seed: number, role: NpcRole): string {
-  const f = FIRST[seed % FIRST.length]!;
-  const l = LAST[(seed * 7) % LAST.length]!;
-  if (role === 'security') return `Agent ${l}`;
-  if (role === 'employee') return `${f} · employé(e)`;
-  if (role === 'student') return `${f} · étudiant(e)`;
-  if (role === 'tourist') return `${f} · visiteur`;
-  return `${f} ${l}`;
-}
-
 function mulberry(seed: number): () => number {
   return () => {
     seed |= 0;
@@ -91,10 +87,13 @@ function junctionOpen(gx: number, gz: number): boolean {
   return spanOpen('z', gx, gz - 1, gz + 1) && spanOpen('x', gz, gx - 1, gx + 1);
 }
 
-/** Instanced body parts: every NPC in the city costs nine draw calls in total. */
+/** Street crowd: baked Harper / Maya / Sam instances, capsules only until the kit loads. */
 class CrowdMesh {
   readonly group = new THREE.Group();
+  private kit: NpcKit | null = null;
   private readonly parts: THREE.InstancedMesh[] = [];
+  private readonly charParts: Array<{ id: CharacterId; slot: BakeSlot; im: THREE.InstancedMesh; headY: number }> = [];
+  private readonly extras: THREE.InstancedMesh[] = [];
   private readonly m = new THREE.Matrix4();
   private readonly root = new THREE.Matrix4();
   private readonly tmp = new THREE.Matrix4();
@@ -102,21 +101,30 @@ class CrowdMesh {
   private readonly v = new THREE.Vector3();
   private readonly s = new THREE.Vector3();
   private readonly e = new THREE.Euler();
+  private readonly ident = new THREE.Matrix4();
+  private readonly eyeWhite = new THREE.Color(0xf5f0e8);
+  private readonly iris = new THREE.Color(0x2c1810);
+  private readonly capWhite = new THREE.Color(0xf5f5f5);
+  private readonly capBrim = new THREE.Color(0x1a1a1a);
+  private readonly capBand = new THREE.Color(0xce1126);
+  private readonly trayCol = new THREE.Color(0x6d4c41);
   private n = 0;
 
   constructor(cap: number) {
     this.group.name = 'pedestrians';
     const geos = [
-      new THREE.CapsuleGeometry(0.26, 0.5, 2, 6), // torso
-      new THREE.SphereGeometry(0.26, 10, 7), // head
-      new THREE.SphereGeometry(0.27, 8, 5), // hair
-      new THREE.CapsuleGeometry(0.09, 0.32, 2, 5), // arms
-      new THREE.CapsuleGeometry(0.11, 0.36, 2, 5), // legs
-      new THREE.BoxGeometry(0.2, 0.1, 0.32), // shoes
-      new THREE.BoxGeometry(0.28, 0.35, 0.12), // bag
-      new THREE.CylinderGeometry(0.2, 0.34, 0.95, 8, 1, true), // long dress
+      new THREE.CapsuleGeometry(0.26, 0.5, 3, 8),
+      new THREE.SphereGeometry(0.22, 12, 9),
+      new THREE.SphereGeometry(0.23, 10, 7),
+      new THREE.CapsuleGeometry(0.09, 0.32, 2, 6),
+      new THREE.CapsuleGeometry(0.11, 0.36, 2, 6),
+      new THREE.BoxGeometry(0.2, 0.1, 0.32),
+      new THREE.BoxGeometry(0.28, 0.35, 0.12),
+      new THREE.CylinderGeometry(0.2, 0.34, 0.95, 8, 1, true),
+      new THREE.SphereGeometry(0.028, 8, 6),
+      new THREE.SphereGeometry(0.016, 8, 6),
     ];
-    const per = [1, 1, 1, 2, 2, 2, 1, 1];
+    const per = [1, 1, 1, 2, 2, 2, 1, 1, 2, 2];
     geos.forEach((g, i) => {
       const material = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, side: i === 7 ? THREE.DoubleSide : THREE.FrontSide });
       const im = new THREE.InstancedMesh(g, material, cap * per[i]!);
@@ -128,15 +136,70 @@ class CrowdMesh {
       this.parts.push(im);
       this.group.add(im);
     });
+    const extraGeos = [
+      new THREE.CylinderGeometry(0.1, 0.11, 0.08, 10),
+      new THREE.CylinderGeometry(0.13, 0.13, 0.02, 10),
+      new THREE.CylinderGeometry(0.105, 0.105, 0.03, 10),
+      new THREE.BoxGeometry(0.42, 0.08, 0.28),
+      new THREE.BoxGeometry(0.28, 0.35, 0.12),
+    ];
+    for (const g of extraGeos) {
+      const im = new THREE.InstancedMesh(g, new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.05 }), 160);
+      im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      im.setColorAt(0, new THREE.Color(0xffffff));
+      im.count = 0;
+      im.frustumCulled = false;
+      this.extras.push(im);
+      this.group.add(im);
+    }
+  }
+
+  setKit(kit: NpcKit): void {
+    if (this.kit) return;
+    this.kit = kit;
+    const nearCap = 48;
+    for (const id of NPC_CHARS) {
+      const body = kit.bodies[id];
+      if (!body) continue;
+      for (const slot of BAKE_SLOTS) {
+        const geo = body.geos[slot];
+        if (!geo) continue;
+        const material = new THREE.MeshStandardMaterial({
+          roughness: slot === 'skin' ? 0.58 : slot === 'eyes' ? 0.28 : 0.78,
+          metalness: 0,
+          map: body.maps[slot] ?? null,
+          color: 0xffffff,
+        });
+        const im = new THREE.InstancedMesh(geo, material, nearCap);
+        im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        im.setColorAt(0, new THREE.Color(0xffffff));
+        im.count = 0;
+        im.castShadow = false;
+        im.frustumCulled = false;
+        this.charParts.push({ id, slot, im, headY: body.headY });
+        this.group.add(im);
+      }
+    }
   }
 
   begin(): void {
     this.n = 0;
     for (const p of this.parts) p.count = 0;
+    for (const p of this.charParts) p.im.count = 0;
+    for (const p of this.extras) p.count = 0;
   }
 
   private put(part: number, local: THREE.Matrix4, color: THREE.Color): void {
     const im = this.parts[part]!;
+    const i = im.count;
+    if (i >= im.instanceMatrix.count) return;
+    this.tmp.multiplyMatrices(this.root, local);
+    im.setMatrixAt(i, this.tmp);
+    im.setColorAt(i, color);
+    im.count = i + 1;
+  }
+
+  private putMesh(im: THREE.InstancedMesh, local: THREE.Matrix4, color: THREE.Color): void {
     const i = im.count;
     if (i >= im.instanceMatrix.count) return;
     this.tmp.multiplyMatrices(this.root, local);
@@ -155,17 +218,55 @@ class CrowdMesh {
   private limb(px: number, py: number, rx: number, oy: number, oz = 0): THREE.Matrix4 {
     const c = Math.cos(rx);
     const s = Math.sin(rx);
-    // pivot · Rx · offset(0, oy, oz)
     return this.m.set(1, 0, 0, px, 0, c, -s, py + c * oy - s * oz, 0, s, c, s * oy + c * oz, 0, 0, 0, 1);
   }
 
-  add(x: number, z: number, yaw: number, look: Look, swing: number, idle: boolean, dress: boolean): void {
+  private slotColor(slot: BakeSlot, look: Look): THREE.Color {
+    if (slot === 'skin') return look.skin;
+    if (slot === 'hair') return look.hair;
+    if (slot === 'top') return look.shirt;
+    if (slot === 'bottom') return look.pants;
+    if (slot === 'shoes') return look.shoes;
+    return this.eyeWhite;
+  }
+
+  private props(look: Look, headY: number, near: boolean): void {
+    if (!near) return;
+    if (look.role === 'police' || look.role === 'security') {
+      this.putMesh(this.extras[0]!, this.local(0, headY + 0.04, 0), this.capWhite);
+      this.putMesh(this.extras[1]!, this.local(0, headY, 0.04), this.capBrim);
+      this.putMesh(this.extras[2]!, this.local(0, headY + 0.02, 0), this.capBand);
+    }
+    if (look.role === 'vendor') this.putMesh(this.extras[3]!, this.local(0.32, 1.05, 0.1), this.trayCol);
+    if (look.bag) this.putMesh(this.extras[4]!, this.local(0.38, 1.02, 0.08), look.pants);
+  }
+
+  add(x: number, z: number, yaw: number, look: Look, swing: number, idle: boolean, near: boolean): void {
     this.n++;
+    const bob = idle ? 0 : Math.abs(swing) * 0.035;
     this.q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, yaw);
-    this.root.compose(this.v.set(x, 0, z), this.q, this.s.setScalar(look.scale));
+    this.root.compose(this.v.set(x, bob, z), this.q, this.s.setScalar(look.scale));
+    const body = this.kit?.bodies[look.characterId];
+    if (body && near) {
+      for (const part of this.charParts) {
+        if (part.id !== look.characterId) continue;
+        this.putMesh(part.im, this.ident, this.slotColor(part.slot, look));
+      }
+      this.props(look, body.headY, true);
+      return;
+    }
+    this.addCapsule(look, swing, idle);
+  }
+
+  private addCapsule(look: Look, swing: number, idle: boolean): void {
+    const dress = look.role === 'sex_worker';
     this.put(0, this.local(0, 1.15, 0), look.shirt);
-    this.put(1, this.local(0, 1.85, 0), look.skin);
-    this.put(2, this.local(0, 2.0, -0.02, 0, 1, look.hairH, 1), look.hair);
+    this.put(1, this.local(0, 1.72, 0.02), look.skin);
+    this.put(2, this.local(0, 1.84, -0.03, 0, 1.02, look.hairH, 1), look.hair);
+    for (const side of [-1, 1] as const) {
+      this.put(8, this.local(side * 0.07, 1.74, 0.18, 0, 1, 1.05, 0.7), this.eyeWhite);
+      this.put(9, this.local(side * 0.07, 1.74, 0.2), this.iris);
+    }
     const armL = idle ? -0.4 + swing : -swing * 0.6;
     const armR = idle ? -0.35 - swing : swing * 0.6;
     this.put(3, this.limb(-0.36, 1.45, armL, -0.22), look.shirt);
@@ -177,14 +278,15 @@ class CrowdMesh {
     } else {
       this.put(4, this.limb(-0.14, 0.72, swing, -0.26), look.pants);
       this.put(4, this.limb(0.14, 0.72, -swing, -0.26), look.pants);
-      this.put(5, this.limb(-0.14, 0.72, swing, -0.52, 0.06), look.hair);
-      this.put(5, this.limb(0.14, 0.72, -swing, -0.52, 0.06), look.hair);
+      this.put(5, this.limb(-0.14, 0.72, swing, -0.52, 0.06), look.shoes);
+      this.put(5, this.limb(0.14, 0.72, -swing, -0.52, 0.06), look.shoes);
     }
-    if (look.bag) this.put(6, this.local(0.45, 1.05, 0.1), look.pants);
+    this.props(look, 1.72, true);
   }
 
   end(): void {
-    for (const p of this.parts) {
+    const all = [...this.parts, ...this.charParts.map((p) => p.im), ...this.extras];
+    for (const p of all) {
       p.instanceMatrix.needsUpdate = true;
       if (p.instanceColor) p.instanceColor.needsUpdate = true;
     }
@@ -215,6 +317,8 @@ export class PedestrianSystem {
   readonly crossers: Array<{ x: number; z: number; r: number }> = [];
 
   static readonly DRAW = 150;
+  static readonly NEAR = 42;
+  static readonly NEAR_MAX = 20;
   static readonly SPAWN_MIN = 110;
   static readonly SPAWN_MAX = 170;
   static readonly RECYCLE = 200;
@@ -226,11 +330,20 @@ export class PedestrianSystem {
   ) {
     const axes = gridAxes();
     this.maxAxis = axes[axes.length - 1]!;
-    this.crowd = new CrowdMesh(420);
+    this.crowd = new CrowdMesh(280);
     scene.add(this.crowd.group);
     this.walkerTarget = 0;
     this.spawnWorkers(density);
+    this.spawnStreetCast();
     this.setDensity(density);
+  }
+
+  preload(): Promise<void> {
+    return ensureNpcKit().then((kit) => {
+      if (!kit) return;
+      this.crowd.setKit(kit);
+      dressPendingNpcs(kit);
+    });
   }
 
   get count(): number {
@@ -264,39 +377,58 @@ export class PedestrianSystem {
   private walkerRole(x: number, z: number): NpcRole {
     const zone = this.zoneAt(x, z);
     const r = this.rand();
-    if (zone === 'student') return r < 0.55 ? 'student' : 'pedestrian';
-    if (zone === 'market') return r < 0.5 ? 'shopper' : 'pedestrian';
-    if (zone === 'core' || zone === 'institutional') return r < 0.35 ? 'employee' : r < 0.45 ? 'tourist' : 'pedestrian';
-    if (zone === 'airport') return r < 0.4 ? 'tourist' : r < 0.6 ? 'employee' : 'pedestrian';
-    return r < 0.15 ? 'shopper' : r < 0.25 ? 'student' : 'pedestrian';
+    const night = this.hour >= 20 || this.hour < 5;
+    if (r < 0.08) return 'police';
+    if (r < (night ? 0.18 : 0.12)) return 'thief';
+    if (night && (zone === 'core' || zone === 'market' || zone === 'dense') && r < 0.28) return 'sex_worker';
+    if (zone === 'student') return r < 0.55 ? 'student' : r < 0.7 ? 'vendor' : 'pedestrian';
+    if (zone === 'market') return r < 0.38 ? 'vendor' : r < 0.62 ? 'shopper' : 'pedestrian';
+    if (zone === 'core' || zone === 'institutional') {
+      if (r < 0.42) return 'business';
+      if (r < 0.55) return 'employee';
+      if (r < 0.65) return 'tourist';
+      return 'pedestrian';
+    }
+    if (zone === 'airport') return r < 0.4 ? 'tourist' : r < 0.6 ? 'employee' : 'business';
+    if (r < 0.18) return 'vendor';
+    if (r < 0.3) return 'shopper';
+    if (r < 0.4) return 'student';
+    if (r < 0.5) return 'business';
+    return 'pedestrian';
+  }
+
+  private applyLook(p: Ped, seed: number, role: NpcRole): void {
+    const paint = roleOutfit(role, seed);
+    const lod = lodColors(paint);
+    const r = mulberry(seed * 31 + 5);
+    p.look = {
+      characterId: paint.characterId,
+      role,
+      seed,
+      skin: new THREE.Color(lod.skin),
+      shirt: new THREE.Color(lod.shirt),
+      pants: new THREE.Color(lod.pants),
+      hair: new THREE.Color(lod.hair),
+      shoes: new THREE.Color(lod.shoes),
+      scale: 0.96 + r() * 0.08,
+      hairH: paint.hairStyle === 'queue' ? 0.72 : 0.55,
+      bag: role === 'shopper' || role === 'business' || role === 'student' ? r() < 0.65 : false,
+    };
+    p.role = role;
+    p.name = pickNpcName(seed, role);
+    p.mesh.userData = { npcName: p.name, npcRole: role, dress: role === 'sex_worker' };
   }
 
   private makePed(seed: number, role: NpcRole, walker: boolean): Ped {
     const r = mulberry(seed * 31 + 5);
-    let shirt = SHIRTS[Math.floor(r() * SHIRTS.length)]!;
-    if (role === 'security') shirt = 0x1a237e;
-    if (role === 'employee') shirt = 0x00897b;
-    if (role === 'tourist') shirt = 0xff7043;
-    const dress = role !== 'security' && r() < 0.28;
-    const look: Look = {
-      skin: new THREE.Color(SKIN_TONES[Math.floor(r() * SKIN_TONES.length)]!),
-      shirt: new THREE.Color(dress ? PAGNE[Math.floor(r() * PAGNE.length)]! : shirt),
-      pants: new THREE.Color(dress ? PAGNE[Math.floor(r() * PAGNE.length)]! : PANTS[Math.floor(r() * PANTS.length)]!),
-      hair: new THREE.Color(0x1d1410),
-      scale: 0.9 + r() * 0.18,
-      hairH: 0.5 + r() * 0.35,
-      bag: role === 'shopper' || role === 'student' ? r() < 0.7 : r() < 0.15,
-    };
     const mesh = new THREE.Group();
-    const name = pickNpcName(seed, role);
     mesh.name = `npc-${seed}`;
-    mesh.userData = { npcName: name, npcRole: role, dress };
-    return {
+    const p: Ped = {
       mesh,
-      name,
+      name: '',
       role,
       paused: false,
-      speed: walker ? 1.1 + r() * 0.45 : 0,
+      speed: walker ? roleSpeed(role, r()) : 0,
       phase: r() * 10,
       walker,
       axis: 'z',
@@ -309,8 +441,22 @@ export class PedestrianSystem {
       active: true,
       crossing: false,
       waiting: false,
-      look,
+      look: {
+        characterId: 'sam',
+        role,
+        seed,
+        skin: new THREE.Color(),
+        shirt: new THREE.Color(),
+        pants: new THREE.Color(),
+        hair: new THREE.Color(),
+        shoes: new THREE.Color(),
+        scale: 1,
+        hairH: 0.55,
+        bag: false,
+      },
     };
+    this.applyLook(p, seed, role);
+    return p;
   }
 
   /** Staff at shops and job sites, guards, a few vendors. They keep their post during opening hours. */
@@ -342,6 +488,46 @@ export class PedestrianSystem {
     }
   }
 
+  /** Police on corners, street vendors, night workers — not only shop staff. */
+  private spawnStreetCast(): void {
+    let id = 12000;
+    const G = ROAD_GRID;
+    const axes = gridAxes().filter((a) => Math.abs(a) >= G && Math.abs(a) <= this.maxAxis - G * 2);
+    const inner = axes.filter((a) => Math.abs(a) <= 480);
+    const pickAxis = () => (inner.length ? inner : axes)[Math.floor(this.rand() * (inner.length || axes.length))]!;
+    const postAt = (role: NpcRole, x: number, z: number, yaw: number, from: number, to: number) => {
+      const p = this.makePed(id++, role, false);
+      p.post = { x, z, yaw, from, to };
+      p.mesh.position.set(x, 0, z);
+      p.mesh.rotation.y = yaw;
+      p.paused = true;
+      this.peds.push(p);
+    };
+    postAt('police', 10.4, 18, Math.PI, 0, 24);
+    postAt('police', -10.4, -6, 0, 0, 24);
+    postAt('vendor', 6.2, 36, Math.PI, 7, 21);
+    postAt('vendor', -8.4, 24, Math.PI / 2, 7, 21);
+    for (let i = 0; i < 22; i++) {
+      const gx = pickAxis();
+      const gz = pickAxis();
+      const walk = walkLine('z', gx);
+      postAt('police', gx + walk, gz + 6, Math.PI, 0, 24);
+    }
+    for (let i = 0; i < 26; i++) {
+      const gx = pickAxis();
+      const gz = pickAxis();
+      const side = this.rand() < 0.5 ? 1 : -1;
+      const walk = walkLine('z', gx);
+      postAt('vendor', gx + side * walk, gz + (this.rand() - 0.5) * 18, side > 0 ? -Math.PI / 2 : Math.PI / 2, 7, 21);
+    }
+    for (let i = 0; i < 14; i++) {
+      const gx = pickAxis();
+      const gz = pickAxis();
+      const walk = walkLine('x', gz);
+      postAt('sex_worker', gx + 8, gz + walk, 0, 20, 5);
+    }
+  }
+
   /** Put a walker on a random open sidewalk leg at distance [rMin, rMax] from (px, pz). */
   private respawn(p: Ped, px: number, pz: number, rMin: number, rMax: number): boolean {
     for (let attempt = 0; attempt < 20; attempt++) {
@@ -368,8 +554,10 @@ export class PedestrianSystem {
       p.queue.length = 0;
       p.crossing = false;
       this.planLeg(p);
-      p.role = this.walkerRole(p.mesh.position.x, p.mesh.position.z);
-      p.name = pickNpcName(Math.floor(this.rand() * 1e6), p.role);
+      const role = this.walkerRole(p.mesh.position.x, p.mesh.position.z);
+      const seed = Math.floor(this.rand() * 1e6);
+      this.applyLook(p, seed, role);
+      p.speed = roleSpeed(role, this.rand());
       return true;
     }
     return false;
@@ -466,6 +654,8 @@ export class PedestrianSystem {
     this.crossers.length = 0;
 
     this.crowd.begin();
+    const nearSq = PedestrianSystem.NEAR ** 2;
+    const close: Array<{ p: Ped; d2: number; swing: number; moving: boolean }> = [];
     let wi = 0;
     for (const p of this.peds) {
       const m = p.mesh;
@@ -492,8 +682,14 @@ export class PedestrianSystem {
       const moving = p.walker && !p.paused && p.queue.length > 0 && !p.waiting;
       if (d2 < 70 * 70) p.phase += cap * (moving ? p.speed * 4.4 : 1.2);
       const swing = moving ? Math.sin(p.phase) * 0.55 : Math.sin(p.phase) * 0.08;
-      this.crowd.add(m.position.x, m.position.z, m.rotation.y, p.look, swing, !moving, !!m.userData.dress);
+      if (d2 < nearSq) close.push({ p, d2, swing, moving });
+      else this.crowd.add(m.position.x, m.position.z, m.rotation.y, p.look, swing, !moving, false);
     }
+    close.sort((a, b) => a.d2 - b.d2);
+    close.forEach((item, i) => {
+      const m = item.p.mesh;
+      this.crowd.add(m.position.x, m.position.z, m.rotation.y, item.p.look, item.swing, !item.moving, i < PedestrianSystem.NEAR_MAX);
+    });
     this.crowd.end();
   }
 

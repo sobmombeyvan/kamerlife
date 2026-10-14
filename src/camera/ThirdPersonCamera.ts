@@ -3,20 +3,58 @@ import { WorldConfig } from '../config/WorldConfig';
 import type { Input } from '../core/Input';
 import type { CollisionSystem } from '../world/CollisionSystem';
 
+/** How the camera frames the inside of a home. */
+export type HomeView = 'plan' | 'iso' | 'shoulder';
+
+export const HOME_VIEWS: ReadonlyArray<{ id: HomeView; label: string; short: string }> = [
+  { id: 'iso', label: 'Vue 3/4', short: '3/4' },
+  { id: 'plan', label: 'Vue du dessus', short: 'Dessus' },
+  { id: 'shoulder', label: 'Vue épaule', short: 'Épaule' },
+];
+
+export function homeViewLabel(view: HomeView): string {
+  return HOME_VIEWS.find((v) => v.id === view)?.label ?? 'Vue';
+}
+
+type Framing = { pitch: number; dist: number; fov: number; lookH: number; camH: number; focus: number };
+
+/** Pitch, distance and lens per indoor framing. */
+const HOME_FRAMING: Record<HomeView, Framing> = {
+  plan: { pitch: 1.52, dist: 20, fov: 46, lookH: 0.35, camH: 0.15, focus: 1 },
+  iso: { pitch: 0.86, dist: 13.5, fov: 48, lookH: 1.0, camH: 0.5, focus: 0.55 },
+  shoulder: { pitch: 0.26, dist: 4.6, fov: 58, lookH: 1.45, camH: 1.5, focus: 0 },
+};
+
+/** Same three views, scaled for the street. */
+const CITY_FRAMING: Record<HomeView, Framing> = {
+  plan: { pitch: 1.38, dist: 36, fov: 50, lookH: 0.2, camH: 0.25, focus: 0 },
+  iso: { pitch: 0.7, dist: 18, fov: 52, lookH: 1.15, camH: 0.9, focus: 0 },
+  shoulder: { pitch: 0.22, dist: 7.2, fov: 60, lookH: 1.45, camH: 1.6, focus: 0 },
+};
+
 export type CameraFollowOpts = {
   distance?: number;
   lookHeight?: number;
-  /** Overhead plan of the house. */
+  /** Indoor framing of the house. */
   isometric?: boolean;
+  /** City-scale 3/4 and plan (not locked to the apartment). */
+  outdoor?: boolean;
+  /** Which indoor framing to use; defaults to the overhead plan. */
+  homeView?: HomeView;
   /** Room point the indoor camera frames, blended with the player. */
   focusX?: number;
   focusZ?: number;
+  /** Interior box around the focus point; keeps the eye-level view in the room. */
+  roomHalfW?: number;
+  roomHalfD?: number;
+  roomHeight?: number;
 };
 
 export class ThirdPersonCamera {
   yaw = 0;
   pitch = 0.2;
   private indoorZoom = 1;
+  private homeView: HomeView = 'iso';
   private readonly desired = new THREE.Vector3();
   private readonly lookAt = new THREE.Vector3();
   private isoBlend = 0;
@@ -37,13 +75,23 @@ export class ThirdPersonCamera {
     this.collisions = collisions;
   }
 
-  /** Overhead view of the apartment, so every piece is clickable. */
-  beginIndoorView(): void {
-    this.yaw = 0;
-    this.pitch = 1.52;
+  /** Frames the apartment with the player's chosen indoor view. */
+  beginIndoorView(view: HomeView = this.homeView): void {
+    this.homeView = view;
+    this.yaw = view === 'plan' ? 0 : -0.6;
+    this.pitch = HOME_FRAMING[view].pitch;
     this.indoorZoom = 1;
     this.isoBlend = 1;
     // Wheel ticks spent outdoors must not snap the plan on the first indoor frame.
+    this.input.consumeZoom();
+  }
+
+  /** 3/4, plan or shoulder in the street — keeps the current heading. */
+  beginOutdoorView(view: HomeView): void {
+    this.homeView = view;
+    this.indoorZoom = 1;
+    this.isoBlend = view === 'shoulder' ? 0 : 1;
+    this.pitch = view === 'shoulder' ? 0.22 : CITY_FRAMING[view].pitch;
     this.input.consumeZoom();
   }
 
@@ -79,10 +127,11 @@ export class ThirdPersonCamera {
       this.beginIndoorView();
       return;
     }
-    this.pitch = 0.22;
-    this.isoBlend = 0;
-    this.camera.fov = 60;
-    this.camera.updateProjectionMatrix();
+    this.beginOutdoorView(this.homeView);
+    if (this.homeView === 'shoulder') {
+      this.camera.fov = 60;
+      this.camera.updateProjectionMatrix();
+    }
   }
 
   updateCreator(
@@ -134,12 +183,24 @@ export class ThirdPersonCamera {
     const blendTarget = iso ? 1 : 0;
     this.isoBlend += (blendTarget - this.isoBlend) * Math.min(1, dt * 4);
 
+    const table = opts?.outdoor ? CITY_FRAMING : HOME_FRAMING;
     if (iso) {
-      this.yaw -= look.dx * sens * 0.35;
-      this.pitch = THREE.MathUtils.lerp(this.pitch, 1.52, Math.min(1, dt * 8));
+      const view = opts?.homeView ?? this.homeView;
+      if (view !== this.homeView) {
+        this.homeView = view;
+        this.indoorZoom = 1;
+      }
+      const frame = table[view];
+      if (view === 'shoulder') {
+        this.yaw -= look.dx * sens;
+        this.pitch = THREE.MathUtils.clamp(this.pitch - look.dy * sens, -0.1, 1.2);
+      } else {
+        this.yaw -= look.dx * sens * 0.35;
+        this.pitch = THREE.MathUtils.lerp(this.pitch, frame.pitch, Math.min(1, dt * 8));
+      }
       const wheel = this.input.consumeZoom();
       if (wheel) {
-        this.indoorZoom = THREE.MathUtils.clamp(this.indoorZoom + wheel * 0.08, 0.82, 1.35);
+        this.indoorZoom = THREE.MathUtils.clamp(this.indoorZoom + wheel * 0.08, 0.7, 1.5);
       }
     } else {
       this.yaw -= look.dx * sens;
@@ -149,19 +210,22 @@ export class ThirdPersonCamera {
       );
     }
 
+    const frame = table[this.homeView];
     const distOutdoor = opts?.isometric
       ? WorldConfig.camera.distance
       : (opts?.distance ?? WorldConfig.camera.distance);
-    const distIndoor = opts?.isometric ? (opts.distance ?? 20) * this.indoorZoom : distOutdoor;
+    const distIndoor = opts?.isometric ? (opts.distance ?? frame.dist) * this.indoorZoom : distOutdoor;
     const dist = THREE.MathUtils.lerp(distOutdoor, distIndoor, this.isoBlend);
     const lookOutdoor = opts?.isometric ? 1.45 : (opts?.lookHeight ?? 1.45);
-    const lookIndoor = opts?.isometric ? (opts.lookHeight ?? 0.35) : lookOutdoor;
+    const lookIndoor = opts?.isometric ? (opts.lookHeight ?? frame.lookH) : lookOutdoor;
     const lookH = THREE.MathUtils.lerp(lookOutdoor, lookIndoor, this.isoBlend);
-    const camH = THREE.MathUtils.lerp(WorldConfig.camera.height, 0.15, this.isoBlend);
+    const camH = THREE.MathUtils.lerp(WorldConfig.camera.height, frame.camH, this.isoBlend);
+    // The plan frames the room, the shoulder view stays on the player.
+    const focusBlend = this.isoBlend * frame.focus;
     const focusX = opts?.focusX ?? target.position.x;
     const focusZ = opts?.focusZ ?? target.position.z;
-    const lookX = THREE.MathUtils.lerp(target.position.x, focusX, this.isoBlend);
-    const lookZ = THREE.MathUtils.lerp(target.position.z, focusZ, this.isoBlend);
+    const lookX = THREE.MathUtils.lerp(target.position.x, focusX, focusBlend);
+    const lookZ = THREE.MathUtils.lerp(target.position.z, focusZ, focusBlend);
 
     const horiz = dist * Math.cos(this.pitch);
     const lift = THREE.MathUtils.lerp(0.55, 1, this.isoBlend);
@@ -174,7 +238,7 @@ export class ThirdPersonCamera {
     const alpha = 1 - Math.exp(-WorldConfig.camera.lerp * dt);
     this.camera.position.lerp(this.desired, alpha);
     this.lookAt.set(lookX, target.position.y + lookH, lookZ);
-    if (this.collisions && this.isoBlend < 0.5) {
+    if (this.collisions && (this.isoBlend < 0.5 || this.homeView === 'shoulder' || (opts?.outdoor && this.homeView === 'iso'))) {
       const c = this.camera.position;
       const l = this.lookAt;
       const t = this.collisions.segmentFraction(l.x, l.y, l.z, c.x, c.y, c.z);
@@ -184,10 +248,18 @@ export class ThirdPersonCamera {
         c.set(l.x + (c.x - l.x) * k, l.y + (c.y - l.y) * k, l.z + (c.z - l.z) * k);
       }
     }
+    // Window openings have no collider, so the eye-level view would slip out of
+    // the house through them: keep it inside the room box instead.
+    if (this.homeView === 'shoulder' && this.isoBlend > 0.5 && opts?.roomHalfW && opts.roomHalfD) {
+      const c = this.camera.position;
+      c.x = THREE.MathUtils.clamp(c.x, focusX - opts.roomHalfW, focusX + opts.roomHalfW);
+      c.z = THREE.MathUtils.clamp(c.z, focusZ - opts.roomHalfD, focusZ + opts.roomHalfD);
+      if (opts.roomHeight) c.y = Math.min(c.y, target.position.y + opts.roomHeight);
+    }
     this.camera.lookAt(this.lookAt);
 
     // Slight FOV tighten indoors for toy-like depth
-    const targetFov = THREE.MathUtils.lerp(60, 46, this.isoBlend);
+    const targetFov = THREE.MathUtils.lerp(60, frame.fov, this.isoBlend);
     if (Math.abs(this.camera.fov - targetFov) > 0.05) {
       this.camera.fov = targetFov;
       this.camera.updateProjectionMatrix();

@@ -2,7 +2,7 @@
  * City life-sim spots: street food, shops, and job sites (Sims loop outside home).
  */
 
-export type LifeSpotKind = 'food' | 'drink' | 'shop' | 'job' | 'phone';
+export type LifeSpotKind = 'food' | 'drink' | 'shop' | 'job' | 'phone' | 'salon';
 
 export type LifeSpot = {
   id: string;
@@ -19,6 +19,8 @@ export type ShopOffer = {
   price: number;
   /** Food/drink restore; omit for phone/accessory purchases. */
   item?: 'meal' | 'snack' | 'drink' | 'coffee';
+  /** Extra meters for mall fashion / electronics / beauty. */
+  boost?: { fun?: number; hygiene?: number; social?: number };
 };
 
 export const FOOD_OFFERS: ShopOffer[] = [
@@ -56,8 +58,7 @@ export const LIFE_SPOTS: LifeSpot[] = [
   // Near player house / Nlongkak
   { id: 'kiosk-home', kind: 'food', name: 'Kiosque Nlongkak', x: 24, z: 131, radius: 4.5 },
   { id: 'drink-home', kind: 'drink', name: 'Boissons du coin', x: 60, z: 116, radius: 4.5 },
-  // Santa Lucia
-  { id: 'shop-santa', kind: 'shop', name: 'Santa Lucia · Courses', x: 108, z: 120, radius: 8 },
+  // Santa Lucia shopping is inside the store (see SantaLuciaSpots)
   // Mokolo market vibe
   { id: 'food-mokolo', kind: 'food', name: 'Street food Mokolo', x: -420, z: -130, radius: 8 },
   // Centre
@@ -75,8 +76,11 @@ export const LIFE_SPOTS: LifeSpot[] = [
   { id: 'phone-city', kind: 'phone', name: 'Phone City', x: 100, z: 228, radius: 5.5 },
   { id: 'phone-gsm', kind: 'phone', name: 'GSM Express', x: 118, z: 228, radius: 5.5 },
   { id: 'phone-plus', kind: 'phone', name: 'Mobile Plus', x: 168, z: 228, radius: 5.5 },
-  // Jobs
-  { id: 'job-mall', kind: 'job', name: 'Job · Mfoundi Mall', x: -108, z: 200, radius: 10 },
+  // Hair & beauty — the only places outside home where the look can change
+  { id: 'salon-nlongkak', kind: 'salon', name: 'Coiffure Divine · Nlongkak', x: 72, z: 131, radius: 5.5 },
+  { id: 'salon-kennedy', kind: 'salon', name: 'Salon Kevin Coiffure', x: 142, z: 228, radius: 5.5 },
+  { id: 'salon-centre', kind: 'salon', name: 'Coiffure Élégance · Centre', x: 10, z: 40, radius: 5.5 },
+  // Jobs (mall work is inside Mfoundi Mall, not a street kiosk)
   { id: 'job-airport', kind: 'job', name: 'Job · Aéroport', x: 216, z: 1040, radius: 12 },
   { id: 'job-mvan', kind: 'job', name: 'Job · Gare Mvan', x: 400, z: -380, radius: 10 },
   { id: 'job-hospital', kind: 'job', name: 'Job · Hôpital (accueil)', x: -252, z: -160, radius: 9 },
@@ -96,6 +100,21 @@ export function nearestLifeSpot(x: number, z: number, maxExtra = 0): LifeSpot | 
   return best;
 }
 
+/** Hair salons: the player can restyle their character here. */
+export function nearestSalon(x: number, z: number, maxExtra = 0): LifeSpot | null {
+  let best: LifeSpot | null = null;
+  let bestD = Infinity;
+  for (const s of LIFE_SPOTS) {
+    if (s.kind !== 'salon') continue;
+    const d = Math.hypot(s.x - x, s.z - z);
+    if (d <= s.radius + maxExtra && d < bestD) {
+      bestD = d;
+      best = s;
+    }
+  }
+  return best;
+}
+
 export function offersFor(spot: LifeSpot): ShopOffer[] {
   if (spot.kind === 'food') return FOOD_OFFERS;
   if (spot.kind === 'drink') return DRINK_OFFERS;
@@ -104,10 +123,12 @@ export function offersFor(spot: LifeSpot): ShopOffer[] {
   return [];
 }
 
-export function jobPay(spot: LifeSpot): number {
+export function jobPay(spot: { id: string }): number {
   if (spot.id.includes('airport')) return 18000;
-  if (spot.id.includes('mall')) return 12000;
+  if (spot.id.includes('mfoundi')) return 11000;
+  if (spot.id.includes('mall')) return 11000;
   if (spot.id.includes('mvan')) return 10000;
   if (spot.id.includes('hospital')) return 9000;
+  if (spot.id.includes('pol') || spot.id.includes('gen') || spot.id.includes('sed')) return 12000;
   return 7500;
 }

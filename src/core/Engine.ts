@@ -79,6 +79,20 @@ export class Engine {
 
     this.resize();
     window.addEventListener('resize', this.resize);
+    canvas.addEventListener(
+      'webglcontextlost',
+      (ev) => {
+        ev.preventDefault();
+      },
+      false,
+    );
+    canvas.addEventListener(
+      'webglcontextrestored',
+      () => {
+        this.applyLiveGraphics();
+      },
+      false,
+    );
   }
 
   get nightAmount(): number {

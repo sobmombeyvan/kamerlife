@@ -15,6 +15,7 @@ import {
   type ShadowId,
 } from './fashion/catalog';
 import { isOwned, ownedItems } from './fashion/inventory';
+import { DRESSES, dressById } from './fashion/dresses';
 
 export type Sex = 'femme' | 'homme';
 export type CharacterId = 'harper' | 'maya' | 'sam';
@@ -79,6 +80,9 @@ export type PlayerLook = {
   topId: ClothId;
   bottomId: ClothId;
   shoeId: ClothId;
+  /** Dress id from fashion/dresses, or 'aucune'. Female characters only. */
+  dressId: string;
+  dressColor: ClothId;
   /** Accessory ids from fashion/catalog, or 'aucun'. */
   hatId: string;
   hatColor: ClothId;
@@ -119,9 +123,9 @@ export function equippedAccessories(look: PlayerLook): { slot: AccessorySlot; id
 
 /** Items on the look the player has not bought. */
 export function unownedAccessories(look: PlayerLook): string[] {
-  return equippedAccessories(look)
-    .map((item) => item.id)
-    .filter((id) => !isOwned(id));
+  const ids = equippedAccessories(look).map((item) => item.id);
+  if (dressById(look.dressId)) ids.push(look.dressId);
+  return ids.filter((id) => !isOwned(id));
 }
 
 export function withoutUnowned(look: PlayerLook): PlayerLook {
@@ -131,6 +135,7 @@ export function withoutUnowned(look: PlayerLook): PlayerLook {
     const id = String(next[key]);
     if (accessoryById(id) && !isOwned(id)) (next as Record<string, unknown>)[key] = 'aucun';
   }
+  if (dressById(next.dressId) && !isOwned(next.dressId)) next.dressId = 'aucune';
   return next;
 }
 
@@ -260,6 +265,8 @@ const DEFAULT_LOOK: PlayerLook = {
   topId: 'origine',
   bottomId: 'origine',
   shoeId: 'origine',
+  dressId: 'aucune',
+  dressColor: 'origine',
   hatId: 'aucun',
   hatColor: 'origine',
   glassesId: 'aucun',
@@ -276,6 +283,16 @@ const DEFAULT_LOOK: PlayerLook = {
   shadowId: 'aucun',
   freckles: false,
 };
+
+/** NPC clone of Harper / Maya / Sam with a clothing patch. */
+export function withLookPatch(characterId: CharacterId, patch: Partial<PlayerLook> = {}): PlayerLook {
+  return {
+    ...DEFAULT_LOOK,
+    ...patch,
+    characterId,
+    sex: characterId === 'sam' ? 'homme' : 'femme',
+  };
+}
 
 export type LookPreset = {
   id: string;
@@ -616,6 +633,11 @@ export function randomizeLook(): PlayerLook {
     topId: pick(CLOTHES).id,
     bottomId: pick(CLOTHES).id,
     shoeId: pick(CLOTHES).id,
+    dressId:
+      sex === 'femme' && Math.random() < 0.45
+        ? pick(DRESSES.filter((d) => owned.includes(d.id))).id
+        : 'aucune',
+    dressColor: pick(dressed).id,
     nose: around(0.84, 1.28),
     noseWidth: around(0.84, 1.28),
     jaw: around(0.94, 1.08),
@@ -653,6 +675,7 @@ export function chooseLook(patch: Partial<PlayerLook>): { prev: PlayerLook; next
   const merged: PlayerLook = { ...prev, ...patch };
   if (patch.sex === 'homme') {
     merged.characterId = 'sam';
+    merged.dressId = 'aucune';
     if (merged.hairStyle === 'queue') merged.hairStyle = 'courte';
   } else if (patch.hairStyle === 'queue') {
     merged.sex = 'femme';
@@ -683,6 +706,7 @@ export function applyLookMaterials(player: THREE.Object3D, look: PlayerLook = lo
   const shoe = CLOTHES.find((s) => s.id === look.shoeId) ?? CLOTHES[0]!;
 
   paint(player.userData.skinMats, skin.color, false);
+  paint(player.userData.skinShadeMats, shade(skin.color), false);
   paint(player.userData.eyeMats, eye.color, true);
   paintHair(player.userData.hairMats, hair.color);
   paintHair(player.userData.browMats, brow.color);
@@ -713,6 +737,11 @@ function paint(
     mat.emissive.setHex(0x000000);
     mat.emissiveIntensity = 0;
   }
+}
+
+/** Ears, nose and the other accent parts sit a shade under the main skin tone. */
+function shade(hex: number): number {
+  return new THREE.Color(hex).multiplyScalar(0.78).getHex();
 }
 
 function paintHair(list: THREE.MeshStandardMaterial[] | undefined, hex: number): void {
@@ -782,6 +811,9 @@ function sanitize(raw: Partial<PlayerLook>): PlayerLook {
     topId: clothOr(raw.topId),
     bottomId: clothOr(raw.bottomId),
     shoeId: clothOr(raw.shoeId),
+    // Dresses are cut for the female bodies only.
+    dressId: characterId !== 'sam' && dressById(raw.dressId) ? (raw.dressId as string) : 'aucune',
+    dressColor: clothOr(raw.dressColor),
     hatId: slotOr(raw.hatId, 'hat'),
     hatColor: clothOr(raw.hatColor),
     glassesId: slotOr(raw.glassesId, 'glasses'),
@@ -802,6 +834,18 @@ function sanitize(raw: Partial<PlayerLook>): PlayerLook {
 
 function slotOr(id: string | undefined, slot: AccessorySlot): string {
   return accessoryById(id)?.slot === slot ? (id as string) : 'aucun';
+}
+
+/** Hex for a dress, falling back to the cut's own color on "origine". */
+export function dressColorHex(id: string, color: ClothId): number {
+  const pickId = color === 'origine' ? dressById(id)?.baseColor ?? 'noir' : color;
+  return CLOTHES.find((c) => c.id === pickId)?.color ?? 0x2b2b2b;
+}
+
+/** Dress currently on the look — unpaid items still preview until Confirm. */
+export function equippedDress(look: PlayerLook): { id: string; color: ClothId } | null {
+  if (!dressById(look.dressId)) return null;
+  return { id: look.dressId, color: look.dressColor };
 }
 
 /** Hex for an accessory, falling back to the item's own color on "origine". */

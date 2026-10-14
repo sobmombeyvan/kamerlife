@@ -95,6 +95,9 @@ export async function mountRiggedPlayer(
   root.userData.pantsMats = slots.bottom;
   root.userData.shoeMats = slots.shoes;
   root.userData.hairMeshes = collectHairMeshes(model);
+  const garments = collectGarmentMeshes(model);
+  root.userData.topMeshes = garments.top;
+  root.userData.bottomMeshes = garments.bottom;
   root.userData.animator = animator;
   root.userData.procedural = false;
   root.userData.rigged = true;
@@ -102,6 +105,43 @@ export async function mountRiggedPlayer(
   applyAppearance(root);
   animator.setLocomotion(false, false, 0, 0);
   return true;
+}
+
+/** Clone of Harper / Maya / Sam for street NPCs — no player fashion, own mixer. */
+export async function instantiateNpcRig(
+  characterId: CharacterId,
+  renderer?: THREE.WebGLRenderer,
+): Promise<THREE.Group | null> {
+  const def = characterById(characterId);
+  const gltf = await loadCached(def.url);
+  if (!gltf || gltf.animations.length === 0) return null;
+
+  const model = cloneSkeleton(gltf.scene) as THREE.Group;
+  model.name = 'npc-rig';
+  cloneMaterials(model);
+  prepareMaterials(model, renderer);
+  const animator = createAnimator(model, gltf);
+  alignFeet(model, animator);
+  model.userData.soleY = model.position.y;
+  const slots = collectSlots(model);
+  model.userData.skinMats = slots.skin;
+  model.userData.eyeMats = slots.eyes;
+  model.userData.browMats = slots.brows;
+  model.userData.hairMats = slots.hair;
+  model.userData.shirtMats = slots.top;
+  model.userData.pantsMats = slots.bottom;
+  model.userData.shoeMats = slots.shoes;
+  model.userData.hairMeshes = collectHairMeshes(model);
+  model.userData.animator = animator;
+  model.userData.characterId = def.id;
+  model.userData.rigged = true;
+  animator.setLocomotion(false, false, 0.05, 0);
+  return model;
+}
+
+/** Shared GLTF cache so NPC baking does not reload Harper / Maya / Sam. */
+export function loadCharacterGltf(characterId: CharacterId): Promise<GLTF | null> {
+  return loadCached(characterById(characterId).url);
 }
 
 function loadCached(url: string): Promise<GLTF | null> {
@@ -441,6 +481,21 @@ function reapplyBodyScale(model: THREE.Object3D): void {
     set(name, tune.arms, 1, tune.arms);
   }
   for (const name of ['thigh_l', 'thigh_r']) set(name, 1, tune.legs, 1);
+}
+
+/** Shirt and trouser meshes, so a dress can hide the top without losing the legs. */
+function collectGarmentMeshes(model: THREE.Object3D): { top: THREE.Mesh[]; bottom: THREE.Mesh[] } {
+  const top: THREE.Mesh[] = [];
+  const bottom: THREE.Mesh[] = [];
+  model.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return;
+    const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+    const slots = mats.map((mat) => clothSlot(obj.name, mat.name));
+    if (slots.some((s) => s === 'skin' || s === 'shoes')) return;
+    if (slots.some((s) => s === 'top')) top.push(obj);
+    else if (slots.some((s) => s === 'bottom')) bottom.push(obj);
+  });
+  return { top, bottom };
 }
 
 function collectHairMeshes(model: THREE.Object3D): THREE.Mesh[] {

@@ -12,11 +12,15 @@ export class Input {
   private pauseQueued = false;
   private lookQueued = false;
   private furnitureQueued = false;
+  private viewQueued = false;
   private zoomDelta = 0;
   private pointerLocked = false;
   private dragging = false;
   private lastX = 0;
   private lastY = 0;
+  private downX = 0;
+  private downY = 0;
+  private clickQueued: { clientX: number; clientY: number } | null = null;
   private mobileMove: MoveAxes = { x: 0, z: 0 };
   private mobileRun = false;
   /** When true, click won't force pointer lock (aerial / menus). */
@@ -139,10 +143,22 @@ export class Input {
     return v;
   }
 
+  consumeViewToggle(): boolean {
+    const v = this.viewQueued;
+    this.viewQueued = false;
+    return v;
+  }
+
   consumeZoom(): number {
     const z = this.zoomDelta;
     this.zoomDelta = 0;
     return z;
+  }
+
+  consumeClick(): { clientX: number; clientY: number } | null {
+    const c = this.clickQueued;
+    this.clickQueued = null;
+    return c;
   }
 
   isKeyDown(code: string): boolean {
@@ -166,8 +182,8 @@ export class Input {
     if (e.code === 'KeyM' || e.code === 'KeyT') {
       this.mapQueued = true;
     }
-    if (e.code === 'KeyV') {
-      this.aerialQueued = true;
+    if (e.code === 'KeyV' && !e.repeat) {
+      this.viewQueued = true;
     }
     if (e.code === 'KeyP') {
       this.phoneQueued = true;
@@ -214,6 +230,8 @@ export class Input {
       if (phone && e.clientY > window.innerHeight * 0.72 && e.clientX > window.innerWidth * 0.55) return;
     }
     this.dragging = true;
+    this.downX = e.clientX;
+    this.downY = e.clientY;
     this.lastX = e.clientX;
     this.lastY = e.clientY;
     this.canvas.setPointerCapture(e.pointerId);
@@ -227,8 +245,10 @@ export class Input {
     this.lastY = e.clientY;
   };
 
-  private readonly onPointerUp = (): void => {
+  private readonly onPointerUp = (e: PointerEvent): void => {
+    const moved = Math.hypot(e.clientX - this.downX, e.clientY - this.downY);
     this.dragging = false;
+    if (moved <= 8) this.clickQueued = { clientX: e.clientX, clientY: e.clientY };
   };
 }
 

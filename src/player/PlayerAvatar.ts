@@ -55,34 +55,43 @@ export function createPlayerAvatar(): THREE.Group {
   head.position.set(0, 2.08, 0.02);
   body.add(head);
 
-  const skull = mesh(new THREE.SphereGeometry(0.22, 16, 14), skin, 0, 0, 0);
-  skull.scale.set(0.95, 1.05, 0.92);
+  const skull = mesh(new THREE.SphereGeometry(0.24, 16, 14), skin, 0, 0.02, 0);
+  skull.scale.set(1.02, 1.06, 1.0);
   skull.castShadow = true;
   head.add(skull);
 
-  const jaw = mesh(new THREE.SphereGeometry(0.14, 12, 10), skin, 0, -0.12, 0.04);
-  jaw.scale.set(1.05, 0.7, 0.95);
+  const jaw = mesh(new THREE.SphereGeometry(0.15, 12, 10), skin, 0, -0.1, 0.04);
+  jaw.scale.set(1.08, 0.72, 0.98);
   head.add(jaw);
 
+  const blush = mat(0xc47a72, 0.65);
   for (const side of [-1, 1] as const) {
-    const ear = mesh(new THREE.SphereGeometry(0.055, 8, 6), skinDark, side * 0.2, 0, 0);
-    ear.scale.set(0.45, 1.1, 0.7);
+    const ear = mesh(new THREE.SphereGeometry(0.05, 8, 6), skinDark, side * 0.22, 0, 0);
+    ear.scale.set(0.42, 1.05, 0.65);
     head.add(ear);
+    const cheek = mesh(new THREE.SphereGeometry(0.055, 8, 6), blush, side * 0.12, -0.04, 0.14);
+    cheek.scale.set(1.15, 0.7, 0.65);
+    head.add(cheek);
   }
 
-  const nose = mesh(new THREE.SphereGeometry(0.045, 8, 6), skinDark, 0, -0.02, 0.2);
-  nose.scale.set(0.7, 0.9, 1.1);
+  const nose = mesh(new THREE.SphereGeometry(0.032, 8, 6), skinDark, 0, -0.01, 0.22);
+  nose.scale.set(0.75, 0.75, 0.95);
   head.add(nose);
 
   for (const side of [-1, 1] as const) {
-    head.add(mesh(new THREE.SphereGeometry(0.035, 8, 6), eyeWhite, side * 0.075, 0.03, 0.175));
-    head.add(mesh(new THREE.SphereGeometry(0.02, 8, 6), iris, side * 0.075, 0.03, 0.2));
-    const brow = mesh(new THREE.BoxGeometry(0.07, 0.015, 0.02), hair, side * 0.075, 0.09, 0.17);
-    brow.rotation.z = side * -0.12;
+    const white = mesh(new THREE.SphereGeometry(0.048, 10, 8), eyeWhite, side * 0.08, 0.04, 0.19);
+    white.scale.set(1, 1.1, 0.7);
+    head.add(white);
+    head.add(mesh(new THREE.SphereGeometry(0.028, 8, 6), iris, side * 0.08, 0.042, 0.225));
+    head.add(mesh(new THREE.SphereGeometry(0.01, 6, 4), eyeWhite, side * 0.065, 0.055, 0.24));
+    const brow = mesh(new THREE.SphereGeometry(0.04, 8, 6), hair, side * 0.08, 0.1, 0.18);
+    brow.scale.set(1.2, 0.28, 0.45);
     head.add(brow);
   }
 
-  head.add(mesh(new THREE.BoxGeometry(0.07, 0.018, 0.02), lip, 0, -0.1, 0.185));
+  const smile = mesh(new THREE.TorusGeometry(0.045, 0.01, 6, 10, Math.PI), lip, 0, -0.08, 0.2);
+  smile.rotation.set(Math.PI / 2, 0, Math.PI);
+  head.add(smile);
 
   // Short textured hair / fade
   const hairCap = mesh(new THREE.SphereGeometry(0.225, 14, 12), hair, 0, 0.06, -0.01);
@@ -175,6 +184,9 @@ export function createPlayerAvatar(): THREE.Group {
   root.userData.body = body;
   root.userData.head = head;
   root.userData.procedural = true;
+  root.userData.skinMats = [skin];
+  root.userData.skinShadeMats = [skinDark];
+  root.userData.hairMats = [hair];
   root.userData.shirtMats = [shirt, shirtDark];
   root.userData.pantsMats = [pants, pantsSeam];
   ensureOutfitApplied(root);

@@ -13,6 +13,11 @@ import { buildHopitalCentralExterior } from './HopitalCentralExterior';
 import { buildEgliseCathedraleExterior } from './EgliseCathedraleExterior';
 import { buildMosqueeExterieur } from './MosqueeExterieur';
 import { buildAvenueKennedyPhoneStrip } from './AvenueKennedyPhoneStrip';
+import { buildPoliceCentrale, buildGendarmerie, buildSedExterior } from './CivicSecurity';
+import { buildStadeOlembe } from './StadeOlembeExterior';
+import { buildClubBastos, buildClubPrivilege, buildRestoNdole, buildRestoBastos } from './LeisureVenues';
+import { buildMilitaryBase } from './MilitaryBaseExterior';
+import { buildAllDealerships } from './CarDealerships';
 import { LANDMARK_FOOTPRINTS } from './LandmarkSites';
 
 /** Builds Phase 1 major landmark exteriors. Returns sidewalk spawn anchors. */
@@ -31,6 +36,16 @@ export function buildMajorLandmarks(
   root.add(buildEgliseCathedraleExterior(collisions));
   root.add(buildMosqueeExterieur(collisions));
   root.add(buildAvenueKennedyPhoneStrip(collisions));
+  root.add(buildPoliceCentrale(collisions));
+  root.add(buildGendarmerie(collisions));
+  root.add(buildSedExterior(collisions));
+  root.add(buildStadeOlembe(collisions));
+  root.add(buildClubBastos(collisions));
+  root.add(buildClubPrivilege(collisions));
+  root.add(buildRestoNdole(collisions));
+  root.add(buildRestoBastos(collisions));
+  root.add(buildMilitaryBase(collisions));
+  root.add(buildAllDealerships(collisions));
   buildDistrictAnchors(root, collisions);
   buildAllDistrictHubs(root, collisions);
 
@@ -71,4 +86,17 @@ export const SPECIAL_POI_IDS = new Set([
   'mosquee-centrale',
   'avenue-kennedy-phones',
   'avenue-kennedy-phones-n',
+  'police-centrale',
+  'gendarmerie',
+  'sed',
+  'stade-olembe',
+  'club-bastos',
+  'club-hippo',
+  'resto-ndole',
+  'resto-bastos',
+  'base-militaire',
+  'alpha-motors',
+  'mercedes',
+  'cami',
+  'abn',
 ]);

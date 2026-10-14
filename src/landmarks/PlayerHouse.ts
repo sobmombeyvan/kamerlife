@@ -655,6 +655,20 @@ function dimSunForInterior(house: THREE.Group, scene: THREE.Scene): void {
   sun.color.setHex(0xffe0b2);
 }
 
+/**
+ * The ceiling has to go for the top-down views, but an eye-level view needs it
+ * back or the rooms read as roofless boxes.
+ */
+export function setHomeCeilingVisible(houseRoot: THREE.Object3D, visible: boolean): void {
+  const house =
+    houseRoot.name === 'landmark-player-house'
+      ? (houseRoot as THREE.Group)
+      : (houseRoot.getObjectByName('landmark-player-house') as THREE.Group | null);
+  if (!house || !house.userData.homeMode) return;
+  const ceiling = house.getObjectByName('home-ceiling');
+  if (ceiling) ceiling.visible = visible;
+}
+
 /** Re-dim after a day/night pass ran while the player was still indoors. */
 export function refreshHomeInteriorLook(houseRoot: THREE.Object3D, scene: THREE.Scene): void {
   const house =

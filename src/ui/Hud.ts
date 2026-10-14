@@ -1,6 +1,6 @@
 import { WorldConfig } from '../config/WorldConfig';
 import type { TaxiDestination } from '../vehicles/TaxiDestinations';
-import { estimateFare } from '../vehicles/TaxiDestinations';
+import { estimateFare, filterDestinations } from '../vehicles/TaxiDestinations';
 import {
   activeWallFinish,
   DECOR_CATALOG,
@@ -52,14 +52,17 @@ import {
   type ShadowId,
 } from '../player/fashion/catalog';
 import { isOwned } from '../player/fashion/inventory';
+import { DRESSES } from '../player/fashion/dresses';
 import { accessoryThumb, ensureThumbnails, hairThumb } from '../player/fashion/thumbnails';
 import { SLOT_FIELDS, unownedAccessories } from '../player/PlayerLook';
+import { HOME_VIEWS, type HomeView } from '../camera/ThirdPersonCamera';
 
 export type LookFocus =
   | 'person'
   | 'body'
   | 'face'
   | 'hair'
+  | 'dresses'
   | 'top'
   | 'bottom'
   | 'shoes'
@@ -99,7 +102,10 @@ export type LookHandlers = {
   onTop: (id: ClothId) => void;
   onBottom: (id: ClothId) => void;
   onShoes: (id: ClothId) => void;
-  onDress: (id: ClothId) => void;
+  /** Harper's suit is one mesh: this paints the whole thing. */
+  onSuit: (id: ClothId) => void;
+  onDressPick: (id: string) => void;
+  onDressColor: (color: ClothId) => void;
   onView: (view: CreatorView) => void;
   onPose: (pose: CreatorPose) => void;
   onRandom: () => void;
@@ -125,6 +131,63 @@ export type LookHandlers = {
 
 export type { DecorShopHandlers } from './HudTypes';
 
+/** Needs shown bottom-left, in reading order. Colors live in main.css per data-need. */
+const NEEDS: ReadonlyArray<{ key: keyof NeedsState; label: string }> = [
+  { key: 'health', label: 'Santé' },
+  { key: 'stamina', label: 'Forme' },
+  { key: 'hunger', label: 'Faim' },
+  { key: 'thirst', label: 'Soif' },
+  { key: 'energy', label: 'Énergie' },
+  { key: 'hygiene', label: 'Hygiène' },
+  { key: 'fun', label: 'Loisirs' },
+  { key: 'social', label: 'Social' },
+];
+/** Below this a need is urgent enough to call out in the alert chip. */
+const NEED_LOW = 25;
+const NEED_WARN = 50;
+
+export type ControlMode = 'walk' | 'home' | 'build' | 'aerial' | 'drive';
+
+type ControlHint = { keys: string[]; label: string; pad?: true };
+
+/** Bottom legend, swapped whenever the player changes how they control the game. */
+const MOVE_PAD: ControlHint = { pad: true, keys: ['Z', 'Q', 'S', 'D'], label: 'Se déplacer' };
+const CONTROL_SETS: Record<ControlMode, ControlHint[]> = {
+  walk: [
+    MOVE_PAD,
+    { keys: ['Maj'], label: 'Courir' },
+    { keys: ['Espace'], label: 'Sauter' },
+    { keys: ['E'], label: 'Interagir' },
+    { keys: ['V'], label: 'Changer de vue' },
+  ],
+  home: [
+    MOVE_PAD,
+    { keys: ['V'], label: 'Changer de vue' },
+    { keys: ['E'], label: 'Interagir' },
+    { keys: ['F'], label: 'Meubles' },
+    { keys: ['Molette'], label: 'Zoomer' },
+  ],
+  build: [
+    { keys: ['Clic'], label: 'Glisser un meuble' },
+    { keys: ['R'], label: 'Tourner' },
+    { keys: ['Suppr'], label: 'Ranger' },
+    { keys: ['Molette'], label: 'Zoomer' },
+    { keys: ['F'], label: 'Terminer' },
+  ],
+  aerial: [
+    { ...MOVE_PAD, label: 'Survoler' },
+    { keys: ['Molette'], label: 'Zoomer' },
+    { keys: ['Clic'], label: 'Destination' },
+    { keys: ['M'], label: 'Fermer la carte' },
+  ],
+  drive: [
+    { ...MOVE_PAD, label: 'Conduire' },
+    { keys: ['Maj'], label: 'Turbo' },
+    { keys: ['E'], label: 'Sortir' },
+    { keys: ['V'], label: 'Changer de vue' },
+  ],
+};
+
 export class Hud {
   private readonly root: HTMLElement;
   private readonly districtEl: HTMLElement;
@@ -138,10 +201,17 @@ export class Hud {
   private readonly toastEl: HTMLElement;
   private readonly taxiPanel: HTMLElement;
   private readonly taxiList: HTMLElement;
+  private readonly taxiSearch: HTMLInputElement;
+  private taxiDests: TaxiDestination[] = [];
+  private taxiFrom = { x: 0, z: 0 };
+  private taxiQuery = '';
   private readonly decorPanel: HTMLElement;
   private readonly decorList: HTMLElement;
   private readonly decorBtn: HTMLElement;
   private readonly furnBtn: HTMLElement;
+  private readonly viewBtn: HTMLElement;
+  private readonly lookBtn: HTMLElement;
+  private lookAvailable = true;
   private readonly lookPanel: HTMLElement;
   private readonly lookList: HTMLElement;
   private readonly lookStage: HTMLElement;
@@ -155,6 +225,12 @@ export class Hud {
   private readonly shopTitle: HTMLElement;
   private readonly moodEl: HTMLElement;
   private readonly bars: Record<string, HTMLElement>;
+  private readonly needVals: Record<string, HTMLElement>;
+  private readonly needRows: Record<string, HTMLElement>;
+  private readonly needAlertEl: HTMLElement;
+  private readonly controlsEl: HTMLElement;
+  private controlMode: ControlMode | null = null;
+  private toastTimer = 0;
   private frames = 0;
   private fpsTimer = 0;
   private fps = 0;
@@ -162,10 +238,10 @@ export class Hud {
   private onTaxiClose: (() => void) | null = null;
   private onShopClose: (() => void) | null = null;
   private onMapClick: (() => void) | null = null;
-  private onAerialClick: (() => void) | null = null;
   private onMuteClick: (() => void) | null = null;
   private onDecorOpen: (() => void) | null = null;
   private onFurnClick: (() => void) | null = null;
+  private onViewClick: (() => void) | null = null;
   private onPhoneClick: (() => void) | null = null;
   private onPauseClick: (() => void) | null = null;
   private onLookClick: (() => void) | null = null;
@@ -185,52 +261,62 @@ export class Hud {
       <div class="hud-top">
         <div class="hud-brand">
           <div class="hud-logo">LC</div>
-          <div>
+          <div class="hud-brand-txt">
             <strong>${WorldConfig.title}</strong>
-            <small id="hud-clock">--:--</small>
+            <div class="hud-time">
+              <small id="hud-clock">--:--</small>
+              <span class="hud-chip" id="hud-weather">Clair</span>
+            </div>
             <small class="hud-tz">Yaoundé · temps réel</small>
           </div>
-        </div>
-        <div class="hud-vitals" id="hud-vitals">
-          <div class="vital"><span>PV</span><div class="bar"><i data-bar="health"></i></div></div>
-          <div class="vital"><span>END</span><div class="bar"><i data-bar="stamina"></i></div></div>
-          <div class="vital"><span>FAIM</span><div class="bar hunger"><i data-bar="hunger"></i></div></div>
-          <div class="vital"><span>SOIF</span><div class="bar thirst"><i data-bar="thirst"></i></div></div>
-          <div class="vital"><span>ÉNR</span><div class="bar energy"><i data-bar="energy"></i></div></div>
-          <div class="vital"><span>HYG</span><div class="bar hygiene"><i data-bar="hygiene"></i></div></div>
-          <div class="vital"><span>FUN</span><div class="bar fun"><i data-bar="fun"></i></div></div>
-          <div class="vital"><span>SOC</span><div class="bar social"><i data-bar="social"></i></div></div>
         </div>
         <div class="hud-stats">
           <div class="money" id="hud-money">0 FCFA</div>
           <div class="mood" id="hud-mood">Humeur · Bien</div>
           <div class="district" id="hud-district">Centre-ville</div>
-          <div class="hud-meta"><span id="hud-weather">Clair</span> · <span id="hud-fps">-- FPS</span></div>
+          <div class="hud-meta"><span id="hud-fps">-- FPS</span></div>
         </div>
       </div>
       <div class="hud-mission" id="hud-mission">
-        <em>Vie à Yaoundé</em>
+        <em>Objectif</em>
         <strong>Mange · dors · travaille · socialise</strong>
+      </div>
+      <div class="hud-needs" id="hud-vitals">
+        <div class="needs-head">
+          <em>Besoins</em>
+          <span class="needs-alert hidden" id="needs-alert"></span>
+        </div>
+        <div class="needs-grid">
+          ${NEEDS.map(
+            (need) => `
+          <div class="vital" data-need="${need.key}">
+            <span class="v-name">${need.label}</span>
+            <div class="bar"><i data-bar="${need.key}"></i></div>
+            <em class="v-val" data-val="${need.key}">--</em>
+          </div>`,
+          ).join('')}
+        </div>
       </div>
       <div class="hud-prompt hidden" id="hud-prompt"></div>
       <div class="hud-toast hidden" id="hud-toast"></div>
-      <div class="tip" id="hud-tip">WASD déplacer · E interagir · P téléphone · Esc pause</div>
+      <div class="tip" id="hud-tip">Explore la ville · appuie sur E devant un lieu</div>
       <div class="fab-col">
-        <button type="button" class="map-fab" id="btn-look">Perso</button>
-        <button type="button" class="map-fab hidden" id="btn-furn">Meubles</button>
-        <button type="button" class="map-fab hidden" id="btn-decor">Déco</button>
-        <button type="button" class="map-fab" id="btn-phone">Tél</button>
-        <button type="button" class="map-fab" id="btn-mute">SON</button>
-        <button type="button" class="map-fab" id="btn-aerial">Aérien</button>
-        <button type="button" class="map-fab" id="btn-map">Carte</button>
-        <button type="button" class="map-fab" id="btn-pause">❚❚</button>
+        <button type="button" class="map-fab" id="btn-look"><span class="fab-txt">Perso</span><kbd>C</kbd></button>
+        <button type="button" class="map-fab" id="btn-view"><span class="fab-txt">3/4</span><kbd>V</kbd></button>
+        <button type="button" class="map-fab hidden" id="btn-furn"><span class="fab-txt">Meubles</span><kbd>F</kbd></button>
+        <button type="button" class="map-fab hidden" id="btn-decor"><span class="fab-txt">Déco</span></button>
+        <button type="button" class="map-fab" id="btn-phone"><span class="fab-txt">Tél</span><kbd>P</kbd></button>
+        <button type="button" class="map-fab" id="btn-mute"><span class="fab-txt">Son</span></button>
+        <button type="button" class="map-fab" id="btn-map"><span class="fab-txt">Carte</span><kbd>M</kbd></button>
+        <button type="button" class="map-fab" id="btn-pause"><span class="fab-txt">Pause</span><kbd>Esc</kbd></button>
       </div>
       <div class="taxi-panel yango-panel hidden" id="taxi-panel">
         <div class="taxi-head">
           <strong>Yango</strong>
           <button type="button" id="taxi-close">✕</button>
         </div>
-        <p class="taxi-sub">Où allez-vous ? · tarif estimé FCFA</p>
+        <p class="taxi-sub">Où allez-vous ? · tous les lieux de Yaoundé</p>
+        <input type="search" class="yango-search" id="taxi-search" placeholder="Rechercher un quartier, un lieu…" autocomplete="off" />
         <div class="taxi-list" id="taxi-list"></div>
       </div>
       <div class="decor-panel hidden" id="decor-panel">
@@ -261,9 +347,7 @@ export class Hud {
         <p class="taxi-sub" id="shop-sub">Choisis un article</p>
         <div class="taxi-list" id="shop-list"></div>
       </div>
-      <div class="bottom-label desktop-only">
-        <kbd>E</kbd> interagir · <kbd>P</kbd> téléphone · <kbd>Esc</kbd> pause · <kbd>M</kbd> carte · <kbd>V</kbd> aérien
-      </div>
+      <div class="hud-controls desktop-only" id="hud-controls"></div>
     `;
     parent.appendChild(this.root);
     this.districtEl = this.root.querySelector('#hud-district') as HTMLElement;
@@ -277,10 +361,17 @@ export class Hud {
     this.toastEl = this.root.querySelector('#hud-toast') as HTMLElement;
     this.taxiPanel = this.root.querySelector('#taxi-panel') as HTMLElement;
     this.taxiList = this.root.querySelector('#taxi-list') as HTMLElement;
+    this.taxiSearch = this.root.querySelector('#taxi-search') as HTMLInputElement;
+    this.taxiSearch.addEventListener('input', () => {
+      this.taxiQuery = this.taxiSearch.value;
+      this.fillTaxiList();
+    });
     this.decorPanel = this.root.querySelector('#decor-panel') as HTMLElement;
     this.decorList = this.root.querySelector('#decor-list') as HTMLElement;
     this.decorBtn = this.root.querySelector('#btn-decor') as HTMLElement;
     this.furnBtn = this.root.querySelector('#btn-furn') as HTMLElement;
+    this.viewBtn = this.root.querySelector('#btn-view') as HTMLElement;
+    this.lookBtn = this.root.querySelector('#btn-look') as HTMLElement;
     this.lookPanel = this.root.querySelector('#look-panel') as HTMLElement;
     this.lookList = this.root.querySelector('#look-list') as HTMLElement;
     this.lookStage = this.root.querySelector('#look-stage') as HTMLElement;
@@ -296,8 +387,15 @@ export class Hud {
     this.shopTitle = this.root.querySelector('#shop-title') as HTMLElement;
     this.moodEl = this.root.querySelector('#hud-mood') as HTMLElement;
     this.bars = {};
-    for (const key of ['health', 'stamina', 'hunger', 'thirst', 'energy', 'hygiene', 'fun', 'social']) {
+    this.needVals = {};
+    this.needRows = {};
+    this.needAlertEl = this.root.querySelector('#needs-alert') as HTMLElement;
+    this.controlsEl = this.root.querySelector('#hud-controls') as HTMLElement;
+    this.setControls('walk');
+    for (const { key } of NEEDS) {
       this.bars[key] = this.root.querySelector(`[data-bar="${key}"]`) as HTMLElement;
+      this.needVals[key] = this.root.querySelector(`[data-val="${key}"]`) as HTMLElement;
+      this.needRows[key] = this.root.querySelector(`.vital[data-need="${key}"]`) as HTMLElement;
     }
 
     this.root.querySelector('#taxi-close')!.addEventListener('click', () => {
@@ -317,19 +415,16 @@ export class Hud {
     });
     this.root.querySelector('#btn-look')!.addEventListener('click', () => this.onLookClick?.());
     this.root.querySelector('#btn-map')!.addEventListener('click', () => this.onMapClick?.());
-    this.root.querySelector('#btn-aerial')!.addEventListener('click', () => this.onAerialClick?.());
     this.root.querySelector('#btn-mute')!.addEventListener('click', () => this.onMuteClick?.());
     this.root.querySelector('#btn-phone')!.addEventListener('click', () => this.onPhoneClick?.());
     this.root.querySelector('#btn-pause')!.addEventListener('click', () => this.onPauseClick?.());
     this.decorBtn.addEventListener('click', () => this.onDecorOpen?.());
     this.furnBtn.addEventListener('click', () => this.onFurnClick?.());
+    this.viewBtn.addEventListener('click', () => this.onViewClick?.());
   }
 
   onOpenMap(cb: () => void): void {
     this.onMapClick = cb;
-  }
-  onToggleAerial(cb: () => void): void {
-    this.onAerialClick = cb;
   }
   onToggleMute(cb: () => void): void {
     this.onMuteClick = cb;
@@ -339,6 +434,9 @@ export class Hud {
   }
   onMoveFurniture(cb: () => void): void {
     this.onFurnClick = cb;
+  }
+  onCycleHomeView(cb: () => void): void {
+    this.onViewClick = cb;
   }
   onOpenPhone(cb: () => void): void {
     this.onPhoneClick = cb;
@@ -352,14 +450,16 @@ export class Hud {
 
   setMuted(muted: boolean): void {
     const btn = this.root.querySelector('#btn-mute') as HTMLElement;
-    btn.textContent = muted ? 'MUTE' : 'SON';
+    btn.classList.toggle('off', muted);
+    setFabLabel(btn, muted ? 'Muet' : 'Son');
   }
 
   setAerialMode(on: boolean): void {
     if (this.aerialMode === on) return;
     this.aerialMode = on;
     this.root.classList.toggle('aerial-on', on);
-    (this.root.querySelector('#btn-aerial') as HTMLElement).textContent = on ? 'Sol' : 'Aérien';
+    const mapBtn = this.root.querySelector('#btn-map') as HTMLElement | null;
+    if (mapBtn) setFabLabel(mapBtn, on ? 'Sol' : 'Carte');
   }
 
   setHomeMode(on: boolean): void {
@@ -371,9 +471,21 @@ export class Hud {
     }
   }
 
+  /** Dims the character button where the look cannot be changed. */
+  setLookAvailable(on: boolean): void {
+    if (this.lookAvailable === on) return;
+    this.lookAvailable = on;
+    this.lookBtn.classList.toggle('off', !on);
+  }
+
+  /** Names the framing currently in use; pressing the button moves to the next. */
+  setHomeView(view: HomeView): void {
+    setFabLabel(this.viewBtn, HOME_VIEWS.find((v) => v.id === view)?.short ?? 'Vue');
+  }
+
   setFurnitureMode(on: boolean): void {
     this.furnBtn.classList.toggle('on', on);
-    this.furnBtn.textContent = on ? 'Finir' : 'Meubles';
+    setFabLabel(this.furnBtn, on ? 'Finir' : 'Meubles');
   }
 
   setDistrict(name: string): void {
@@ -384,6 +496,23 @@ export class Hud {
   setTip(text: string): void {
     if (this.tipEl.textContent === text) return;
     this.tipEl.textContent = text;
+  }
+
+  /** Swaps the bottom legend for the keys that actually do something right now. */
+  setControls(mode: ControlMode): void {
+    if (this.controlMode === mode) return;
+    this.controlMode = mode;
+    this.controlsEl.innerHTML = CONTROL_SETS[mode]
+      .map((hint) => {
+        const keys = hint.keys.map((k) => `<kbd>${k}</kbd>`).join('');
+        const cls = hint.pad ? 'keypad' : 'keys';
+        const title = hint.pad ? ' title="ZQSD, WASD ou les flèches"' : '';
+        const pad = hint.pad
+          ? `<kbd class="k-up">${hint.keys[0]}</kbd><kbd class="k-left">${hint.keys[1]}</kbd><kbd class="k-down">${hint.keys[2]}</kbd><kbd class="k-right">${hint.keys[3]}</kbd>`
+          : keys;
+        return `<div class="ctrl"${title}><span class="${cls}">${pad}</span><b>${hint.label}</b></div>`;
+      })
+      .join('');
   }
 
   setMoney(fcfa: number): void {
@@ -398,14 +527,25 @@ export class Hud {
   }
 
   setNeeds(n: NeedsState, moodLabel?: string): void {
-    setBar(this.bars.health!, n.health);
-    setBar(this.bars.stamina!, n.stamina);
-    setBar(this.bars.hunger!, n.hunger);
-    setBar(this.bars.thirst!, n.thirst);
-    setBar(this.bars.energy!, n.energy);
-    if (this.bars.hygiene) setBar(this.bars.hygiene, n.hygiene);
-    if (this.bars.fun) setBar(this.bars.fun, n.fun);
-    if (this.bars.social) setBar(this.bars.social, n.social);
+    let urgent = 0;
+    for (const { key, label } of NEEDS) {
+      const value = Math.max(0, Math.min(100, Math.round(n[key])));
+      setBar(this.bars[key]!, value);
+      const val = this.needVals[key];
+      if (val && val.textContent !== String(value)) val.textContent = String(value);
+      const row = this.needRows[key];
+      if (row) {
+        row.classList.toggle('low', value <= NEED_LOW);
+        row.classList.toggle('warn', value > NEED_LOW && value <= NEED_WARN);
+      }
+      if (value <= NEED_LOW) {
+        urgent += 1;
+        if (urgent === 1) this.needAlertEl.dataset.first = label;
+      }
+    }
+    const alert = urgent === 0 ? '' : urgent === 1 ? `${this.needAlertEl.dataset.first} au plus bas` : `${urgent} besoins urgents`;
+    if (this.needAlertEl.textContent !== alert) this.needAlertEl.textContent = alert;
+    this.needAlertEl.classList.toggle('hidden', urgent === 0);
     if (moodLabel) {
       const next = `Humeur · ${moodLabel}`;
       if (this.moodEl.textContent !== next) this.moodEl.textContent = next;
@@ -461,7 +601,9 @@ export class Hud {
   notify(text: string, ms = 2800): void {
     this.toastEl.textContent = text;
     this.toastEl.classList.remove('hidden');
-    window.setTimeout(() => this.toastEl.classList.add('hidden'), ms);
+    // Without clearing, an earlier toast's timer hides this one early.
+    window.clearTimeout(this.toastTimer);
+    this.toastTimer = window.setTimeout(() => this.toastEl.classList.add('hidden'), ms);
   }
 
   showTaxiMenu(
@@ -475,10 +617,21 @@ export class Hud {
     this.hideDecorShop();
     this.onTaxiPick = onPick;
     this.onTaxiClose = onClose;
+    this.taxiDests = destinations;
+    this.taxiFrom = { x: fromX, z: fromZ };
+    this.taxiQuery = '';
+    this.taxiSearch.value = '';
     (this.root.querySelector('.taxi-head strong') as HTMLElement).textContent = standName;
+    this.fillTaxiList();
+    this.taxiPanel.classList.remove('hidden');
+    this.taxiSearch.focus();
+  }
+
+  private fillTaxiList(): void {
     this.taxiList.innerHTML = '';
-    for (const dest of destinations) {
-      const fare = estimateFare(fromX, fromZ, dest);
+    const shown = filterDestinations(this.taxiDests, this.taxiQuery);
+    for (const dest of shown) {
+      const fare = estimateFare(this.taxiFrom.x, this.taxiFrom.z, dest);
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'taxi-dest';
@@ -489,7 +642,12 @@ export class Hud {
       });
       this.taxiList.appendChild(btn);
     }
-    this.taxiPanel.classList.remove('hidden');
+    if (!shown.length) {
+      const empty = document.createElement('p');
+      empty.className = 'taxi-sub';
+      empty.textContent = 'Aucun lieu pour cette recherche';
+      this.taxiList.appendChild(empty);
+    }
   }
 
   hideTaxiMenu(): void {
@@ -605,6 +763,7 @@ export class Hud {
       ['body', 'Corps'],
       ['face', 'Visage'],
       ['hair', 'Cheveux'],
+      ...(look.sex === 'femme' ? ([['dresses', 'Robes']] as [LookFocus, string][]) : []),
       ['top', 'Haut'],
       ['bottom', 'Bas'],
       ['shoes', 'Chaussures'],
@@ -636,6 +795,7 @@ export class Hud {
     else if (this.lookFocus === 'body') this.fillProportions(look, handlers);
     else if (this.lookFocus === 'face') this.fillFace(look, handlers);
     else if (this.lookFocus === 'hair') this.fillHair(look, handlers);
+    else if (this.lookFocus === 'dresses') this.fillDresses(look, handlers);
     else if (this.lookFocus === 'top') this.fillGarment(look, handlers, 'top');
     else if (this.lookFocus === 'bottom') this.fillGarment(look, handlers, 'bottom');
     else if (this.lookFocus === 'shoes') this.fillGarment(look, handlers, 'shoes');
@@ -754,6 +914,51 @@ export class Hud {
     return card;
   }
 
+  private fillDresses(look: PlayerLook, handlers: LookHandlers): void {
+    const note = document.createElement('div');
+    note.className = 'look-note';
+    note.textContent =
+      'Une robe remplace le haut et le bas du modèle. « Aucune » rend ses habits d’origine.';
+    this.lookList.appendChild(note);
+    this.section('Robes');
+    const gallery = document.createElement('div');
+    gallery.className = 'look-gallery';
+    const none = document.createElement('button');
+    none.type = 'button';
+    none.className = 'look-card' + (look.dressId === 'aucune' ? ' on' : '');
+    none.innerHTML = `<strong>Aucune</strong><em>Habits du modèle</em>`;
+    none.addEventListener('click', () => handlers.onDressPick('aucune'));
+    gallery.appendChild(none);
+    for (const item of DRESSES) {
+      if (!this.wanted(`${item.name} ${item.detail}`)) continue;
+      const worn = look.dressId === item.id;
+      const owned = isOwned(item.id);
+      const card = document.createElement('div');
+      card.className = 'shop-card' + (worn ? ' on' : '');
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'look-card' + (worn ? ' on' : '');
+      const price = owned ? 'Possédé' : `${item.price.toLocaleString('fr-FR')} FCFA`;
+      btn.innerHTML = `<strong>${item.name}</strong><em>${item.detail}</em><b class="${owned ? 'owned' : 'price'}">${price}</b>`;
+      btn.addEventListener('click', () => handlers.onDressPick(worn ? 'aucune' : item.id));
+      card.appendChild(btn);
+      if (!owned) {
+        const buy = document.createElement('button');
+        buy.type = 'button';
+        buy.className = 'shop-buy';
+        buy.disabled = handlers.money() < item.price;
+        buy.textContent = buy.disabled ? 'FCFA insuffisants' : `Acheter · ${item.price.toLocaleString('fr-FR')}`;
+        buy.addEventListener('click', () => handlers.onBuy([item.id]));
+        card.appendChild(buy);
+      }
+      gallery.appendChild(card);
+    }
+    this.lookList.appendChild(gallery);
+    if (look.dressId === 'aucune') return;
+    this.section('Couleur de la robe');
+    this.lookList.appendChild(this.chips(CLOTHES, look.dressColor, handlers.onDressColor));
+  }
+
   private shopFilters(look: PlayerLook, handlers: LookHandlers): void {
     const row = document.createElement('div');
     row.className = 'look-row look-row-3';
@@ -775,7 +980,11 @@ export class Hud {
     this.lookList.appendChild(row);
     const unpaid = unownedAccessories(look);
     if (unpaid.length === 0) return;
-    const total = unpaid.reduce((sum, id) => sum + (ACCESSORIES.find((a) => a.id === id)?.price ?? 0), 0);
+    const total = unpaid.reduce((sum, id) => {
+      const acc = ACCESSORIES.find((a) => a.id === id)?.price;
+      const dress = DRESSES.find((d) => d.id === id)?.price;
+      return sum + (acc ?? dress ?? 0);
+    }, 0);
     const bar = document.createElement('div');
     bar.className = 'shop-summary';
     bar.innerHTML = `<span>Essayé, pas encore acheté · <b>${total.toLocaleString('fr-FR')} FCFA</b></span>`;
@@ -827,6 +1036,7 @@ export class Hud {
     note.textContent = `Solde · ${handlers.money().toLocaleString('fr-FR')} FCFA. Clique un article pour l’essayer, puis Acheter pour le garder.`;
     this.lookList.appendChild(note);
     this.fillAccessories(look, handlers, ['hat', 'glasses', 'bag', 'watch', 'neck', 'ears']);
+    if (look.sex === 'femme') this.fillDresses(look, handlers);
   }
 
   private fillMakeup(look: PlayerLook, handlers: LookHandlers): void {
@@ -974,7 +1184,7 @@ export class Hud {
       note.className = 'look-note';
       note.textContent = 'Harper porte un tailleur d’une seule pièce.';
       this.lookList.appendChild(note);
-      this.lookList.appendChild(this.chips(CLOTHES, look.topId, handlers.onDress));
+      this.lookList.appendChild(this.chips(CLOTHES, look.topId, handlers.onSuit));
       return;
     }
     if (slot === 'bottom' && !separate) {
@@ -1071,7 +1281,7 @@ export class Hud {
     const actions = document.createElement('div');
     actions.className = 'creator-actions';
     const order: LookFocus[] = [
-      'person', 'body', 'face', 'hair', 'top', 'bottom', 'shoes', 'hats', 'bags', 'jewelry', 'makeup', 'outfits', 'shop', 'wardrobe',
+      'person', 'body', 'face', 'hair', 'dresses', 'top', 'bottom', 'shoes', 'hats', 'bags', 'jewelry', 'makeup', 'outfits', 'shop', 'wardrobe',
     ];
     const back = document.createElement('button');
     back.type = 'button';
@@ -1183,6 +1393,12 @@ function setBar(el: HTMLElement, value: number): void {
   el.style.width = `${Math.max(0, Math.min(100, value))}%`;
 }
 
+/** Writes a FAB caption without wiping its shortcut badge. */
+function setFabLabel(btn: HTMLElement, text: string): void {
+  const txt = btn.querySelector('.fab-txt') ?? btn;
+  if (txt.textContent !== text) txt.textContent = text;
+}
+
 function cssColor(hex: number): string {
   return `#${hex.toString(16).padStart(6, '0')}`;
 }
@@ -1203,7 +1419,18 @@ function hairSvg(style: HairStyle, hair: string, skin: string): string {
         ? `<path d="M26 30c1-14 26-16 28-1 2 6-2 12-8 14-4-8-10-6-14-1-5-8-10-8-12-12z" fill="${hair}"/>
            <path d="M52 40c8 2 12 16 8 32-6-2-8-16-6-26-2-4-4-6-2-6z" fill="${hair}"/>`
         : `<path d="M22 34c2-16 36-18 38 0 2 8-2 14-8 16-6-10-12-6-16 0-6-10-14-10-14-16z" fill="${hair}"/>`;
-  return `<svg viewBox="0 0 80 104" aria-hidden="true"><rect width="80" height="104" rx="12" fill="#0e1a16"/><circle cx="40" cy="40" r="16" fill="${skin}"/>${cut}<circle cx="34" cy="40" r="1.5" fill="#24180f"/><circle cx="46" cy="40" r="1.5" fill="#24180f"/><path d="M34 48c2 3 10 3 12 0" fill="none" stroke="#24180f" stroke-width="1"/></svg>`;
+  const gid = `hg-${style}`;
+  return `<svg viewBox="0 0 80 104" aria-hidden="true">
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#355a4c"/><stop offset="100%" stop-color="#10211b"/></linearGradient></defs>
+    <rect width="80" height="104" rx="14" fill="url(#${gid})"/>
+    <rect x="1.2" y="1.2" width="77.6" height="101.6" rx="13" fill="none" stroke="#c9a227" stroke-opacity=".28"/>
+    <ellipse cx="40" cy="92" rx="18" ry="5" fill="#000" opacity=".22"/>
+    <circle cx="40" cy="40" r="16" fill="${skin}"/>
+    ${cut}
+    <circle cx="34" cy="39" r="1.6" fill="#24180f"/>
+    <circle cx="46" cy="39" r="1.6" fill="#24180f"/>
+    <path d="M34 48c2.4 3.2 9.6 3.2 12 0" fill="none" stroke="#24180f" stroke-width="1.2" stroke-linecap="round"/>
+  </svg>`;
 }
 
 function outfitSvg(topId: string, bottomId: string, shoeId: string, suit: boolean): string {
@@ -1214,7 +1441,18 @@ function outfitSvg(topId: string, bottomId: string, shoeId: string, suit: boolea
   const body = suit
     ? `<path d="M22 40h36l3 26H19z" fill="${top}"/><path d="M36 40l5 12h-10z" fill="#f6f3ee"/>`
     : `<path d="M28 40h24l2 16H26z" fill="${top}"/>`;
-  return `<svg viewBox="0 0 80 104" aria-hidden="true"><rect width="80" height="104" rx="12" fill="#0e1a16"/><circle cx="40" cy="22" r="8" fill="#e6c3a6"/><path d="M32 18c1-7 15-8 16 0 1 3-1 5-3 6H35c-2-1-4-3-3-6z" fill="#3a2418"/>${body}<path d="M26 66h12v22H24z" fill="${legs}"/><path d="M42 66h12v22H40z" fill="${legs}"/><path d="M24 88h14v6H22z" fill="${shoe}"/><path d="M42 88h16v6H40z" fill="${shoe}"/></svg>`;
+  const gid = `og-${topId}-${bottomId}-${shoeId}`;
+  return `<svg viewBox="0 0 80 104" aria-hidden="true">
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#355a4c"/><stop offset="100%" stop-color="#10211b"/></linearGradient></defs>
+    <rect width="80" height="104" rx="14" fill="url(#${gid})"/>
+    <rect x="1.2" y="1.2" width="77.6" height="101.6" rx="13" fill="none" stroke="#c9a227" stroke-opacity=".28"/>
+    <ellipse cx="40" cy="96" rx="16" ry="4" fill="#000" opacity=".2"/>
+    <circle cx="40" cy="22" r="8" fill="#e6c3a6"/>
+    <path d="M32 18c1-7 15-8 16 0 1 3-1 5-3 6H35c-2-1-4-3-3-6z" fill="#3a2418"/>
+    ${body}
+    <path d="M26 66h12v22H24z" fill="${legs}"/><path d="M42 66h12v22H40z" fill="${legs}"/>
+    <path d="M24 88h14v6H22z" fill="${shoe}"/><path d="M42 88h16v6H40z" fill="${shoe}"/>
+  </svg>`;
 }
 
 function portraitSvg(look: Partial<PlayerLook>, style: HairStyle, suit: boolean): string {
@@ -1232,5 +1470,17 @@ function portraitSvg(look: Partial<PlayerLook>, style: HairStyle, suit: boolean)
   const torso = suit
     ? `<path d="M24 36h32l2 18H22z" fill="${top}"/><path d="M37 36l4 8h-8z" fill="#f6f3ee"/>`
     : `<path d="M28 36h24l1 14H27z" fill="${top}"/>`;
-  return `<svg viewBox="0 0 80 104" aria-hidden="true"><rect width="80" height="104" rx="12" fill="#0e1a16"/>${cut}<circle cx="40" cy="24" r="10" fill="${skin}"/><circle cx="36" cy="24" r="1.2" fill="#24180f"/><circle cx="44" cy="24" r="1.2" fill="#24180f"/>${torso}<path d="M28 54h10v24H26z" fill="${legs}"/><path d="M42 54h10v24H40z" fill="${legs}"/><path d="M26 78h12v6H24z" fill="${shoe}"/><path d="M42 78h14v6H40z" fill="${shoe}"/></svg>`;
+  const gid = `pg-${look.skinId ?? 's'}-${style}`;
+  return `<svg viewBox="0 0 80 104" aria-hidden="true">
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#355a4c"/><stop offset="100%" stop-color="#10211b"/></linearGradient></defs>
+    <rect width="80" height="104" rx="14" fill="url(#${gid})"/>
+    <rect x="1.2" y="1.2" width="77.6" height="101.6" rx="13" fill="none" stroke="#c9a227" stroke-opacity=".28"/>
+    <ellipse cx="40" cy="96" rx="16" ry="4" fill="#000" opacity=".2"/>
+    ${cut}
+    <circle cx="40" cy="24" r="10" fill="${skin}"/>
+    <circle cx="36" cy="24" r="1.2" fill="#24180f"/><circle cx="44" cy="24" r="1.2" fill="#24180f"/>
+    ${torso}
+    <path d="M28 54h10v24H26z" fill="${legs}"/><path d="M42 54h10v24H40z" fill="${legs}"/>
+    <path d="M26 78h12v6H24z" fill="${shoe}"/><path d="M42 78h14v6H40z" fill="${shoe}"/>
+  </svg>`;
 }

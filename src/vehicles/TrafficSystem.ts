@@ -7,6 +7,7 @@ import { hasSignal, signalState } from '../city/signals';
 import { poolMaterial } from '../city/kitMaterials';
 import { CityUniforms } from '../render/nightState';
 import { createBrandVehicle, createBusMesh, createMotoMesh, pickParkedBrand } from './VehicleFactory';
+import type { CollisionSystem } from '../world/CollisionSystem';
 
 type Axis = 'x' | 'z';
 type Kind = 'car' | 'taxi' | 'bus' | 'moto';
@@ -93,6 +94,7 @@ export class TrafficSystem {
   private obstacles: Array<{ x: number; z: number; r: number }> = [];
   private lastX = 0;
   private lastZ = 0;
+  private blockerCount = 0;
 
   constructor(scene: THREE.Scene, count = 42) {
     this.root.name = 'traffic';
@@ -179,11 +181,11 @@ export class TrafficSystem {
 
   private create(i: number): Vehicle {
     const roll = i % 14;
-    const kind: Kind = roll === 0 ? 'bus' : roll <= 3 ? 'taxi' : roll === 4 || roll === 9 ? 'moto' : 'car';
+    const kind: Kind = roll === 0 ? 'bus' : roll <= 4 ? 'taxi' : roll === 5 || roll === 10 ? 'moto' : 'car';
     let mesh: THREE.Group;
     if (kind === 'bus') mesh = createBusMesh();
     else if (kind === 'moto') mesh = createMotoMesh(i);
-    else if (kind === 'taxi') mesh = createBrandVehicle(i, 'taxi');
+    else if (kind === 'taxi') mesh = createBrandVehicle(i, i % 4 === 0 ? 'taxi' : 'yellow-taxi');
     else {
       const brand = pickParkedBrand(i * 7 + 3);
       mesh = createBrandVehicle(i, brand === 'taxi' ? 'car' : brand);
@@ -410,6 +412,27 @@ export class TrafficSystem {
     }
 
     this.writeMeshes(cap);
+  }
+
+  /** Moving cars / buses / motos block the walker. */
+  syncPlayerBlockers(collisions: CollisionSystem): void {
+    let n = 0;
+    for (const v of this.vehicles) {
+      if (!v.visible) continue;
+      const h = v.kind === 'bus' ? 2.2 : v.kind === 'moto' ? 1.2 : 1.55;
+      collisions.setVehicleBox(
+        `traffic-${n}`,
+        v.mesh.position.x,
+        v.mesh.position.z,
+        v.mesh.rotation.y,
+        v.halfLen,
+        v.halfW,
+        h,
+      );
+      n++;
+    }
+    for (let i = n; i < this.blockerCount; i++) collisions.clearDynamicBox(`traffic-${i}`);
+    this.blockerCount = n;
   }
 
   private yawFor(v: Vehicle): number {

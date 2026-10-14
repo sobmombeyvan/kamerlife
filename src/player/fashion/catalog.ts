@@ -132,7 +132,7 @@ export function accessoriesFor(slot: AccessorySlot): AccessoryDef[] {
 export const MISSING_ASSETS: string[] = [
   'Hauts séparés (t-shirts, chemises, hoodies, vestes, blazers)',
   'Bas séparés (jeans, cargos, jupes, shorts)',
-  'Robes, boubous, combinaisons et tenues de cérémonie',
+  'Boubous, combinaisons et tenues de cérémonie',
   'Chaussures de formes différentes (talons, bottes, sandales)',
   'Coupes dégradées (fades) et coupes lisses longues',
 ];

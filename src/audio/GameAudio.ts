@@ -30,9 +30,13 @@ export class GameAudio {
   /** Call once; attaches unlock listeners. */
   init(): void {
     const unlock = (): void => {
-      void this.unlock();
-      window.removeEventListener('pointerdown', unlock);
-      window.removeEventListener('keydown', unlock);
+      void this.unlock().then(() => {
+        // Keep listening until audio really runs: mobile browsers often refuse
+        // the first resume, and they suspend the context when the tab sleeps.
+        if (!this.unlocked) return;
+        window.removeEventListener('pointerdown', unlock);
+        window.removeEventListener('keydown', unlock);
+      });
     };
     window.addEventListener('pointerdown', unlock);
     window.addEventListener('keydown', unlock);
@@ -51,9 +55,15 @@ export class GameAudio {
   }
 
   async unlock(): Promise<void> {
-    if (this.unlocked) return;
+    if (this.ctx) {
+      if (this.ctx.state !== 'running') await this.resumeCtx(this.ctx);
+      this.unlocked = this.ctx.state === 'running';
+      if (this.unlocked) this.startAmbient();
+      return;
+    }
     const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (!Ctx) return;
+    // Assigned before the first await so a second gesture reuses this context.
     this.ctx = new Ctx();
     this.master = this.ctx.createGain();
     this.master.gain.value = this.muted ? 0 : 0.85;
@@ -71,9 +81,17 @@ export class GameAudio {
     this.engineGain.gain.value = 0;
     this.engineGain.connect(this.master);
 
-    await this.ctx.resume();
-    this.unlocked = true;
-    this.startAmbient();
+    await this.resumeCtx(this.ctx);
+    this.unlocked = this.ctx.state === 'running';
+    if (this.unlocked) this.startAmbient();
+  }
+
+  private async resumeCtx(ctx: AudioContext): Promise<void> {
+    try {
+      await ctx.resume();
+    } catch {
+      /* the gesture was not accepted; a later one retries */
+    }
   }
 
   update(dt: number, state: AudioState): void {
@@ -143,6 +161,40 @@ export class GameAudio {
     g.connect(this.sfxGain);
     o.start(t0);
     o.stop(t0 + 0.14);
+  }
+
+  playShot(): void {
+    if (!this.ctx || !this.unlocked) return;
+    const t0 = this.now();
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.makeNoiseBuffer(0.12);
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1600, t0);
+    filter.frequency.exponentialRampToValueAtTime(240, t0 + 0.09);
+    filter.Q.value = 0.7;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.26, t0 + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.1);
+    src.connect(filter);
+    filter.connect(g);
+    g.connect(this.sfxGain);
+    src.start(t0);
+    src.stop(t0 + 0.12);
+
+    const pop = this.ctx.createOscillator();
+    const pg = this.ctx.createGain();
+    pop.type = 'square';
+    pop.frequency.setValueAtTime(130, t0);
+    pop.frequency.exponentialRampToValueAtTime(48, t0 + 0.06);
+    pg.gain.setValueAtTime(0.0001, t0);
+    pg.gain.exponentialRampToValueAtTime(0.15, t0 + 0.003);
+    pg.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.07);
+    pop.connect(pg);
+    pg.connect(this.sfxGain);
+    pop.start(t0);
+    pop.stop(t0 + 0.08);
   }
 
   playConfirm(): void {

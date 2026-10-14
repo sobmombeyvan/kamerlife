@@ -22,7 +22,9 @@ export function buildLifeSpotMarkers(root: THREE.Group): void {
             ? 0x0288d1
             : s.kind === 'shop'
               ? 0xef6c00
-              : 0xc62828;
+              : s.kind === 'salon'
+                ? 0xad1457
+                : 0xc62828;
 
     const stall = new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.4, 2.6), mat(color));
     stall.position.y = 1.2;
@@ -32,7 +34,8 @@ export function buildLifeSpotMarkers(root: THREE.Group): void {
     roof.position.y = 2.5;
     g.add(roof);
 
-    const tag = s.kind === 'job' ? 'JOB' : s.kind === 'phone' ? 'TEL' : 'SHOP';
+    const tag =
+      s.kind === 'job' ? 'JOB' : s.kind === 'phone' ? 'TEL' : s.kind === 'salon' ? 'SALON' : 'SHOP';
     addTextSign(g, 0, 3.2, 1.4, 4.2, 0.7, tag, {
       subtitle: s.name.slice(0, 18),
       bg: 0x10251f,

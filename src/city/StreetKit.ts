@@ -364,6 +364,7 @@ function lampsForSegment(ctx: StreetCtx, f: Frame, r: RoadInfo, v0: number, v1: 
       const u = s * (r.hw + CURB + SIDEWALK - 0.35);
       const p = [0, 0, 0];
       toWorld(f, u, v, p);
+      if (!isFree(p[0]!, p[2]!, 0.4, 0.4, 0.5)) continue;
       const armLen = r.highway ? 2.6 : 1.8;
       const headU = u - s * armLen;
       const h = [0, 0, 0];
@@ -426,6 +427,7 @@ function utilityLine(ctx: StreetCtx, f: Frame, r: RoadInfo, v0: number, v1: numb
     const v = v0 + step * i;
     const p = [0, 0, 0];
     toWorld(f, u, v, p);
+    if (!isFree(p[0]!, p[2]!, 0.5, 0.5, 0.5)) continue;
     const wood = rnd() < 0.45;
     ctx.B.kit.cylinder(new Frame(p[0]!, p[2]!), 0, 0, 0, wood ? 0.13 : 0.16, wood ? 0.1 : 0.11, 8.6, wood ? 0x5b4a3a : 0x9a968e, 6);
     ctx.B.kit.box(f, u, 8.1, v, 1.8, 0.12, 0.12, wood ? 0x4d3f31 : 0x8a867e);

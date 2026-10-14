@@ -45,10 +45,30 @@ function stageHead(): THREE.Group {
 
 function snap(renderer: THREE.WebGLRenderer, subject: THREE.Object3D, withHead: boolean): string {
   const scene = new THREE.Scene();
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.6));
-  const key = new THREE.DirectionalLight(0xffffff, 2.2);
-  key.position.set(0.6, 1, 1.2);
+  scene.background = new THREE.Color(0x1a2c26);
+  const hemi = new THREE.HemisphereLight(0xfff4e5, 0x3d4a44, 1.35);
+  scene.add(hemi);
+  const key = new THREE.DirectionalLight(0xfff0d8, 2.4);
+  key.position.set(0.7, 1.1, 1.4);
   scene.add(key);
+  const rim = new THREE.DirectionalLight(0x88c5b0, 1.1);
+  rim.position.set(-1.2, 0.4, -0.8);
+  scene.add(rim);
+  const floorY = withHead ? 1.28 : -0.02;
+  const floor = new THREE.Mesh(
+    new THREE.CircleGeometry(0.55, 32),
+    new THREE.MeshStandardMaterial({ color: 0x243830, roughness: 0.9 }),
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = floorY;
+  scene.add(floor);
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.4, 0.48, 48),
+    new THREE.MeshBasicMaterial({ color: 0xc9a227, transparent: true, opacity: 0.38, side: THREE.DoubleSide }),
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = floorY + 0.004;
+  scene.add(ring);
   const head = withHead ? stageHead() : null;
   if (head) scene.add(head);
   scene.add(subject);
@@ -56,9 +76,9 @@ function snap(renderer: THREE.WebGLRenderer, subject: THREE.Object3D, withHead: 
   if (head) box.expandByObject(head);
   const center = box.getCenter(new THREE.Vector3());
   const size = box.getSize(new THREE.Vector3()).length();
-  const camera = new THREE.PerspectiveCamera(30, 1, 0.01, 10);
-  const dir = new THREE.Vector3(0.55, 0.28, 1).normalize();
-  camera.position.copy(center).addScaledVector(dir, size * 1.75);
+  const camera = new THREE.PerspectiveCamera(28, 1, 0.01, 12);
+  const dir = new THREE.Vector3(0.48, 0.32, 1).normalize();
+  camera.position.copy(center).addScaledVector(dir, size * 1.85);
   camera.lookAt(center);
   renderer.render(scene, camera);
   const url = renderer.domElement.toDataURL('image/png');
@@ -75,9 +95,11 @@ export function ensureThumbnails(): void {
   } catch {
     return;
   }
-  renderer.setSize(160, 160, false);
-  renderer.setClearColor(0x000000, 0);
+  renderer.setSize(256, 256, false);
+  renderer.setClearColor(0x1a2c26, 1);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.12;
   for (const item of ACCESSORIES) {
     const obj = buildAccessory(item.id, STAGE, accessoryColor(item.id, 'origine'), 0.014);
     if (!obj) continue;

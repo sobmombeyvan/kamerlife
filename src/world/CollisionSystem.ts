@@ -48,6 +48,23 @@ export class CollisionSystem {
     this.dynamic.delete(id);
   }
 
+  /** Oriented car / bus footprint as a world AABB the walker cannot step through. */
+  setVehicleBox(
+    id: string,
+    x: number,
+    z: number,
+    yaw: number,
+    halfL: number,
+    halfW: number,
+    height = 1.55,
+  ): void {
+    const c = Math.abs(Math.cos(yaw));
+    const s = Math.abs(Math.sin(yaw));
+    const hx = halfL * s + halfW * c + 0.08;
+    const hz = halfL * c + halfW * s + 0.08;
+    this.setDynamicBox(id, x, height * 0.5, z, hx, height * 0.5, hz);
+  }
+
   /** Drop every box added with `tag` (layers rebuilt when settings change, e.g. trees). */
   removeTag(tag: string): void {
     const cells = this.tagCells.get(tag);
@@ -147,6 +164,8 @@ export class CollisionSystem {
 
     const pushOut = (box: Aabb) => {
       if (head <= box.minY || feet >= box.maxY) return;
+      // Thin walkable slabs (stairs / étages): allow climbing onto the top.
+      if (box.tag === 'walk' && feet + 0.05 >= box.maxY - 1.15 && feet < box.maxY + 0.3) return;
       const closestX = clamp(outX, box.minX, box.maxX);
       const closestZ = clamp(outZ, box.minZ, box.maxZ);
       const dx = outX - closestX;
@@ -184,6 +203,38 @@ export class CollisionSystem {
       for (const box of this.dynamic.values()) pushOut(box);
     }
     return { x: outX, z: outZ };
+  }
+
+  /**
+   * Highest walkable top under the player. Ignores ceilings above `playerY + climb`.
+   */
+  supportY(x: number, z: number, radius: number, playerY: number, fallback = 0, climb = 1.15): number {
+    let best = fallback;
+    const pad = radius + 0.2;
+    const x0 = Math.floor((x - pad) / CELL);
+    const x1 = Math.floor((x + pad) / CELL);
+    const z0 = Math.floor((z - pad) / CELL);
+    const z1 = Math.floor((z + pad) / CELL);
+    const r2 = radius * radius;
+    const consider = (box: Aabb) => {
+      if (box.tag !== 'walk') return;
+      const closestX = clamp(x, box.minX, box.maxX);
+      const closestZ = clamp(z, box.minZ, box.maxZ);
+      const dx = x - closestX;
+      const dz = z - closestZ;
+      if (dx * dx + dz * dz > r2) return;
+      const top = box.maxY;
+      if (top > playerY + climb) return;
+      if (top > best) best = top;
+    };
+    for (let ix = x0; ix <= x1; ix++) {
+      for (let iz = z0; iz <= z1; iz++) {
+        const list = this.grid.get(`${ix},${iz}`);
+        if (list) for (const box of list) consider(box);
+      }
+    }
+    for (const box of this.dynamic.values()) consider(box);
+    return best;
   }
 
   /**

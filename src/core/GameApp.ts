@@ -1,9 +1,11 @@
-import type * as THREE from 'three';
+import * as THREE from 'three';
 import { Engine } from './Engine';
 import { Input } from './Input';
 import { CollisionSystem } from '../world/CollisionSystem';
 import { buildBootstrapWorld } from '../world/BootstrapWorld';
 import { createPlayerAvatar } from '../player/PlayerAvatar';
+import { roleLabel } from '../pedestrians/roles';
+import type { NpcRole } from '../pedestrians/NpcAvatar';
 import { applyAppearance, mountRiggedPlayer } from '../player/PlayerRig';
 import { CharacterStudio } from '../player/CharacterStudio';
 import {
@@ -20,6 +22,7 @@ import {
   type PlayerLook,
 } from '../player/PlayerLook';
 import { accessoryById } from '../player/fashion/catalog';
+import { dressById } from '../player/fashion/dresses';
 import { grantItem, isOwned, ownedItems, replaceOwned } from '../player/fashion/inventory';
 import {
   addOutfit,
@@ -33,7 +36,12 @@ import {
 } from '../player/Wardrobe';
 import type { LookHandlers } from '../ui/Hud';
 import { PlayerController } from '../player/PlayerController';
-import { ThirdPersonCamera } from '../camera/ThirdPersonCamera';
+import {
+  HOME_VIEWS,
+  ThirdPersonCamera,
+  homeViewLabel,
+  type HomeView,
+} from '../camera/ThirdPersonCamera';
 import { AerialCamera } from '../camera/AerialCamera';
 import { Hud } from '../ui/Hud';
 import { CityMap } from '../ui/CityMap';
@@ -47,6 +55,7 @@ import {
   isInsidePlayerHouse,
   setHomeInteriorMode,
   refreshHomeInteriorLook,
+  setHomeCeilingVisible,
   PLAYER_HOUSE,
 } from '../landmarks/PlayerHouse';
 import { TrafficSystem } from '../vehicles/TrafficSystem';
@@ -88,6 +97,7 @@ import { GameClock } from '../sim/GameClock';
 import { PlayerNeeds, type NeedActivity } from '../sim/PlayerNeeds';
 import { loadGameSave, writeGameSave } from '../save/GameSave';
 import { GraphicsConfig, applyQuality } from '../config/GraphicsConfig';
+import { WorldConfig } from '../config/WorldConfig';
 import { PerfHud } from '../render/PerfHud';
 import { DensityOverlay } from '../ui/DensityOverlay';
 import { CityDistanceCull } from '../world/CityDistanceCull';
@@ -97,11 +107,22 @@ import { tickSignals } from '../city/signals';
 import { SocialMemory } from '../sim/SocialMemory';
 import {
   nearestLifeSpot,
+  nearestSalon,
   offersFor,
   jobPay,
   type LifeSpot,
   type ShopOffer,
 } from '../sim/LifeSpots';
+import { isInsideMfoundiMall, mallFloorAt, nearestMallSpot, type MallSpot } from '../sim/MallSpots';
+import { isInsideSantaLucia, nearestSantaSpot, santaFloorAt, type SantaSpot } from '../sim/SantaLuciaSpots';
+import { setSantaRoofVisible } from '../landmarks/SantaLuciaExterior';
+import { setNamedRoofVisible } from '../landmarks/interiorKit';
+import { nearestVenueSpot, venueAt, VENUES, type VenueSpot } from '../sim/VenueSpots';
+import {
+  nearestPalaceMuzzles,
+  palaceEjectPos,
+  palaceZone,
+} from '../sim/PalaceSecurity';
 
 /** Vehicles kept around the player at traffic density ×1. */
 const TRAFFIC_BASE = 80;
@@ -126,6 +147,14 @@ export class GameApp {
   private parked!: ParkedCarSystem;
   private cityRoot!: THREE.Group;
   private houseRoot: THREE.Group | null = null;
+  private santaRoot: THREE.Group | null = null;
+  private readonly venueRoots = new Map<string, THREE.Object3D>();
+  private spinParts: THREE.Object3D[] = [];
+  private wasVenueId: string | null = null;
+  private palaceWarned = false;
+  private palaceFireAcc = 0;
+  private palaceTracerLife = 0;
+  private readonly palaceTracers: THREE.Line[] = [];
   private homeSpots: HomeSpot[] = [];
   private furniture!: FurnitureEditor;
   private activity = new PlayerActivity();
@@ -137,6 +166,15 @@ export class GameApp {
   private editor = new EditorStub();
   private running = false;
   private wasInsideHome = false;
+  private wasInsideMall = false;
+  private wasInsideSanta = false;
+  private mapLiftedHome = false;
+  private readonly mapRay = new THREE.Raycaster();
+  private readonly mapGround = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  private readonly mapHit = new THREE.Vector3();
+  private readonly mapNdc = new THREE.Vector2();
+  private readonly cockpitLook = new THREE.Vector3();
+  private homeView: HomeView = 'iso';
   private homeBusy = 0;
   private pendingActivity: NeedActivity | null = null;
   private busyLabel: string | null = null;
@@ -168,6 +206,11 @@ export class GameApp {
     this.cityRoot = buildBootstrapWorld(this.engine.scene, this.collisions);
     this.chunks = this.cityRoot.userData.chunks as CityChunks;
     this.houseRoot = this.cityRoot.getObjectByName('landmark-player-house') as THREE.Group | null;
+    this.santaRoot = this.cityRoot.getObjectByName('landmark-santa-lucia') as THREE.Group | null;
+    for (const v of VENUES) {
+      const node = this.cityRoot.getObjectByName(v.rootName);
+      if (node) this.venueRoots.set(v.id, node);
+    }
     this.homeSpots = getHomeSpots(PLAYER_HOUSE.cx, PLAYER_HOUSE.cz);
     if (this.houseRoot) syncHomeSpotsToFurniture(this.homeSpots, this.houseRoot);
     this.furniture = new FurnitureEditor(
@@ -192,10 +235,24 @@ export class GameApp {
     this.taxis = new TaxiSystem(this.engine.scene);
     this.parked = new ParkedCarSystem(this.engine.scene, this.collisions);
     this.parked.collectFrom(this.cityRoot);
+    this.parked.syncPlayerBlockers();
+    const base = this.cityRoot.getObjectByName('landmark-base-militaire');
+    this.spinParts = (base?.userData.rotors as THREE.Object3D[] | undefined) ?? [];
+    for (const p of this.spinParts) {
+      p.traverse((o) => {
+        o.matrixAutoUpdate = true;
+      });
+    }
 
     const avatar = createPlayerAvatar();
     this.engine.scene.add(avatar);
-    void mountRiggedPlayer(avatar, this.engine.renderer);
+    void mountRiggedPlayer(avatar, this.engine.renderer).then((ok) => {
+      if (!ok) {
+        applyAppearance(avatar);
+        this.hud.notify('Modèle du personnage introuvable — avatar de secours', 5000);
+      }
+      void this.pedestrians.preload();
+    });
 
     this.cameraRig = new ThirdPersonCamera(this.engine.camera, this.input);
     this.cameraRig.setCollisions(this.collisions);
@@ -221,16 +278,13 @@ export class GameApp {
       this.audio.playUi();
       this.toggleMap();
     });
-    this.hud.onToggleAerial(() => {
-      this.audio.playUi();
-      this.toggleAerial();
-    });
     this.hud.onToggleMute(() => {
       const muted = this.audio.toggleMute();
       this.hud.setMuted(muted);
     });
     this.hud.onOpenDecor(() => this.openDecorShop());
     this.hud.onMoveFurniture(() => this.toggleFurniture());
+    this.hud.onCycleHomeView(() => this.cycleHomeView());
     this.hud.onOpenPhone(() => this.togglePhone());
     this.hud.onOpenPause(() => this.togglePause());
     this.hud.onOpenLook(() => this.toggleCharacterLook());
@@ -269,8 +323,10 @@ export class GameApp {
       this.player.object.visible = true;
     }
 
-    if (this.input.consumeAerialToggle()) this.toggleAerial();
-    if (this.input.consumeMapToggle() && !this.aerial.active && !this.parked.driving) this.toggleMap();
+    if (this.input.consumeAerialToggle()) this.toggleMap();
+    if (this.input.consumeMapToggle() && !this.parked.driving) this.toggleMap();
+    const mapClick = this.input.consumeClick();
+    if (mapClick && this.cityMap.isOpen() && this.aerial.active) this.pickMapGround(mapClick);
 
     if (this.homeBusy > 0) {
       this.homeBusy = Math.max(0, this.homeBusy - dt);
@@ -331,17 +387,27 @@ export class GameApp {
       this.phone.isOpen() ||
       this.pauseMenu.isOpen() ||
       this.dialogue.isOpen();
-    this.input.consumeFurnitureToggle();
+    const furnitureKey = this.input.consumeFurnitureToggle();
+    const viewKey = this.input.consumeViewToggle();
+    if (!uiBlocking && this.wasInsideHome && furnitureKey) this.toggleFurniture();
+    if (!uiBlocking && !this.aerial.active && viewKey) this.cycleHomeView();
     const driving = this.parked.driving;
     const busy = this.homeBusy > 0;
 
     if (this.aerial.active) {
       this.aerial.update(dt);
-      this.hud.setDistrict('Vue aérienne');
-      this.hud.setTip('WASD déplace · molette zoom · glisser oriente · V revient au sol');
+      this.hud.setDistrict('Carte · Yaoundé');
+      this.hud.setTip('WASD déplace · molette zoom · glisser oriente · M ferme');
       this.hud.setAerialMode(true);
+      this.hud.setControls('aerial');
     } else {
       this.hud.setAerialMode(false);
+      if (!driving) {
+        this.hud.setControls(
+          this.furniture.enabled ? 'build' : this.wasInsideHome ? 'home' : 'walk',
+        );
+      }
+      this.hud.setLookAvailable(this.wasInsideHome || !!nearestSalon(p.x, p.z));
 
       if (this.hud.isLookPanelOpen() && !ride.riding) {
         this.hud.setPrompt(null);
@@ -373,18 +439,30 @@ export class GameApp {
         this.studio.follow(this.player.object.position);
       } else if (driving && !uiBlocking) {
         const car = this.parked.update(dt, this.input, this.player.object);
-        if (car) this.cameraRig.update(car, dt, { distance: 11, lookHeight: 1.2 });
+        if (car) this.updateDriveCamera(car, dt);
         this.handleVehicleInteract();
         const carLabel = (this.parked.activeMesh?.userData.label as string) || 'Voiture';
         this.hud.setDistrict(`Au volant · ${carLabel}`);
-        this.hud.setTip('WASD conduire · Shift turbo · E sortir');
+        this.hud.setPrompt(null);
+        this.hud.setTip(
+          this.homeView === 'shoulder'
+            ? 'Cockpit — WASD · Shift turbo · V autres vues · E sortir'
+            : 'WASD conduire · Shift turbo · V cockpit · E sortir',
+        );
+        this.hud.setControls('drive');
       } else if (!ride.riding && !this.editor.isActive() && !uiBlocking) {
         const onHomeFloor = isInsidePlayerHouse(p.x, p.z);
+        const inVenueEarly = !onHomeFloor ? venueAt(p.x, p.z) : null;
+        const mallGround =
+          !onHomeFloor &&
+          (isInsideMfoundiMall(p.x, p.z) || isInsideSantaLucia(p.x, p.z) || !!inVenueEarly)
+            ? this.collisions.supportY(p.x, p.z, WorldConfig.player.radius, p.y)
+            : 0;
         if (!busy) {
           this.player.update(dt, {
             speedMul: this.needs.moveMultiplier(),
             canRun: this.needs.canRun(),
-            groundY: onHomeFloor ? HOME_FLOOR_TOP : 0,
+            groundY: onHomeFloor ? HOME_FLOOR_TOP : mallGround,
           });
         }
         this.needs.update(dt, this.player.moving, this.player.running, busy);
@@ -403,24 +481,59 @@ export class GameApp {
         }
         this.wasInsideHome = inside;
 
+        const inMall = !inside && isInsideMfoundiMall(p.x, p.z);
+        if (inMall && !this.wasInsideMall) {
+          this.hud.notify('Mfoundi Mall — RDC Apple · étage boutiques · jobs à l’accueil');
+          this.hud.setTip('Balade-toi · E au vendeur · escalier pour l’étage');
+        }
+        this.wasInsideMall = inMall;
+
+        const inSanta = !inside && !inMall && isInsideSantaLucia(p.x, p.z);
+        if (inSanta && !this.wasInsideSanta) {
+          this.hud.notify('Santa Lucia — RDC courses · étage ménage / textile');
+          this.hud.setTip('Escalier à gauche · E pour acheter');
+        }
+        if (this.santaRoot) {
+          setSantaRoofVisible(this.santaRoot, !inSanta || this.homeView === 'shoulder');
+        }
+        this.wasInsideSanta = inSanta;
+
+        const inVenue = !inside && !inMall && !inSanta ? venueAt(p.x, p.z) : null;
+        if (inVenue && !inVenue.restricted && this.wasVenueId !== inVenue.id) {
+          this.hud.notify(inVenue.name);
+          this.hud.setTip(inVenue.enterTip);
+        }
+        for (const v of VENUES) {
+          const root = this.venueRoots.get(v.id);
+          if (!root || !v.hideRoof) continue;
+          const here = inVenue?.id === v.id;
+          setNamedRoofVisible(root, !here || this.homeView === 'shoulder');
+        }
+        this.wasVenueId = inVenue?.id ?? null;
+
         this.cameraRig.update(
           this.player.object,
           dt,
           inside
             ? {
-                distance: busy && this.activity.kind === 'sleep' ? 17 : this.furniture.enabled ? 20 : 17,
-                lookHeight: 0.35,
                 isometric: true,
+                homeView: this.furniture.enabled ? 'plan' : this.homeView,
                 focusX: PLAYER_HOUSE.cx,
                 focusZ: PLAYER_HOUSE.cz,
+                roomHalfW: PLAYER_HOUSE.interiorHalfW - 0.5,
+                roomHalfD: PLAYER_HOUSE.interiorHalfD - 0.5,
+                roomHeight: 2.5,
               }
-            : undefined,
+            : (inMall || inSanta || !!inVenue) && this.homeView === 'shoulder'
+              ? { distance: (inMall || inSanta) && p.y > 3 ? 5.5 : 6.2, lookHeight: 1.35 }
+              : this.streetCamOpts(),
         );
         if (!busy) this.handleVehicleInteract();
 
         const district = findDistrictAt(p.x, p.z);
         const landmark = nearestLandmark(p.x, p.z, 70);
         const stand = this.taxis.nearestStand(p.x, p.z, 9);
+        const saleCar = this.parked.nearestForSale(p.x, p.z, 5.2);
         const nearCar = this.parked.nearest(p.x, p.z, 5.5);
         const outsideDoor = nearOutsideDoor(
           p.x,
@@ -431,7 +544,10 @@ export class GameApp {
         const spot = inside ? nearestHomeSpot(p.x, p.z, this.homeSpots) : null;
         const doorOpen = this.houseRoot ? isHomeDoorOpen(this.houseRoot) : false;
         const nearNpc = !inside ? this.pedestrians.nearest(p.x, p.z, 3.0) : null;
-        const lifeSpot = !inside ? nearestLifeSpot(p.x, p.z) : null;
+        const mallSpot = inMall ? nearestMallSpot(p.x, p.z, p.y) : null;
+        const santaSpot = inSanta ? nearestSantaSpot(p.x, p.z, p.y) : null;
+        const venueSpot = inVenue ? nearestVenueSpot(p.x, p.z) : null;
+        const lifeSpot = !inside && !inMall && !inSanta && !inVenue ? nearestLifeSpot(p.x, p.z) : null;
 
         if (ride.riding) {
           this.hud.setPrompt(null);
@@ -454,16 +570,67 @@ export class GameApp {
           this.hud.setPrompt(null);
         } else if (inside && spot && !uiBlocking) {
           this.hud.setDistrict(PLAYER_HOUSE.name);
-          this.hud.setTip(`${tipForSpot(spot, doorOpen)} · maintiens un meuble pour le glisser`);
+          this.hud.setTip(`${tipForSpot(spot, doorOpen)} · V change la vue`);
           this.hud.setPrompt(`<kbd>E</kbd> ${spot.label}`);
         } else if (inside && !uiBlocking) {
           this.hud.setDistrict(PLAYER_HOUSE.name);
-          this.hud.setTip('Vue du haut — maintiens le clic sur un meuble et glisse-le');
+          this.hud.setTip(
+            this.furniture.enabled
+              ? 'Mode meubles — maintiens le clic sur un meuble et glisse-le'
+              : `${homeViewLabel(this.homeView)} — V change la vue · F pour les meubles`,
+          );
           this.hud.setPrompt(null);
         } else if (outsideDoor && !uiBlocking) {
           this.hud.setDistrict(PLAYER_HOUSE.name);
           this.hud.setTip(doorOpen ? 'Porte ouverte — entre' : 'Ouvre la porte pour entrer');
           this.hud.setPrompt(doorOpen ? null : '<kbd>E</kbd> Ouvrir la porte');
+        } else if (santaSpot && !uiBlocking) {
+          this.hud.setDistrict(`Santa Lucia · ${santaSpot.name}`);
+          this.hud.setTip(santaSpot.blurb);
+          this.hud.setPrompt(`<kbd>E</kbd> Acheter · ${santaSpot.name}`);
+        } else if (mallSpot && !uiBlocking) {
+          this.hud.setDistrict(`Mfoundi Mall · ${mallSpot.name}`);
+          if (mallSpot.kind === 'job') {
+            this.hud.setTip(`Emploi sur place · ~${jobPay(mallSpot).toLocaleString('fr-FR')} FCFA`);
+            this.hud.setPrompt('<kbd>E</kbd> Travailler · magasinier');
+          } else {
+            this.hud.setTip(mallSpot.blurb);
+            this.hud.setPrompt(`<kbd>E</kbd> Acheter · ${mallSpot.name}`);
+          }
+        } else if (venueSpot && !inVenue?.restricted && !uiBlocking) {
+          this.hud.setDistrict(`${inVenue!.name} · ${venueSpot.name}`);
+          this.hud.setTip(venueSpot.blurb);
+          const verb =
+            venueSpot.kind === 'job'
+              ? 'Travailler'
+              : venueSpot.kind === 'ritual'
+                ? venueSpot.price
+                  ? `Entrer · ${venueSpot.price} FCFA`
+                  : 'Participer'
+                : 'Acheter';
+          this.hud.setPrompt(`<kbd>E</kbd> ${verb} · ${venueSpot.name}`);
+        } else if (inVenue && !inVenue.restricted && !uiBlocking) {
+          this.hud.setDistrict(inVenue.name);
+          this.hud.setTip(inVenue.enterTip);
+          this.hud.setPrompt(null);
+        } else if (inSanta && !uiBlocking) {
+          const upstairs = santaFloorAt(p.y) === 1;
+          this.hud.setDistrict(upstairs ? 'Santa Lucia · Étage' : 'Santa Lucia · RDC');
+          this.hud.setTip(
+            upstairs
+              ? 'Étage — ménage et textile · E pour acheter'
+              : 'RDC — boulangerie à droite · rayons garnis · escalier à gauche',
+          );
+          this.hud.setPrompt(null);
+        } else if (inMall && !uiBlocking) {
+          const upstairs = mallFloorAt(p.y) === 1;
+          this.hud.setDistrict(upstairs ? 'Mfoundi Mall · Étage' : 'Mfoundi Mall · RDC');
+          this.hud.setTip(
+            upstairs
+              ? 'Étage — Pharmacie, librairie, bijoux, chaussures, sport, opticien'
+              : 'RDC — FREE DEAL, Pirate, Amani, Smile, JM · escalier vers l’étage',
+          );
+          this.hud.setPrompt(null);
         } else if (lifeSpot && !uiBlocking) {
           this.hud.setDistrict(lifeSpot.name);
           if (lifeSpot.kind === 'job') {
@@ -472,6 +639,9 @@ export class GameApp {
           } else if (lifeSpot.kind === 'phone') {
             this.hud.setTip('Avenue Kennedy · smartphones & accessoires');
             this.hud.setPrompt(`<kbd>E</kbd> Boutique · ${lifeSpot.name}`);
+          } else if (lifeSpot.kind === 'salon') {
+            this.hud.setTip('Salon de coiffure · change ta coupe et tes habits');
+            this.hud.setPrompt(`<kbd>E</kbd> Salon · changer de look`);
           } else {
             this.hud.setTip('Acheter nourriture / boisson');
             this.hud.setPrompt(`<kbd>E</kbd> Acheter · ${lifeSpot.name}`);
@@ -481,6 +651,14 @@ export class GameApp {
           this.hud.setDistrict(nearNpc.name);
           this.hud.setTip(this.social.label(rel.affinity));
           this.hud.setPrompt(`<kbd>E</kbd> Parler · ${nearNpc.name}`);
+        } else if (saleCar && !uiBlocking) {
+          const label = (saleCar.mesh.userData.saleLabel as string) || 'Voiture';
+          const price = Number(saleCar.mesh.userData.salePrice) || 0;
+          this.hud.setDistrict(label);
+          this.hud.setTip('Concession · achète pour conduire');
+          this.hud.setPrompt(
+            `<kbd>E</kbd> Acheter · ${label} · ${price.toLocaleString('fr-FR')} FCFA`,
+          );
         } else if (nearCar && !uiBlocking) {
           const label = (nearCar.mesh.userData.label as string) || 'Voiture';
           this.hud.setDistrict(`${label} garée`);
@@ -503,9 +681,16 @@ export class GameApp {
       }
     }
 
+    if (!this.aerial.active && !ride.riding) {
+      this.updatePalaceSecurity(dt, driving);
+    } else {
+      this.fadePalaceTracers(dt);
+    }
+
     const cullX = this.aerial.active ? this.engine.camera.position.x : p.x;
     const cullZ = this.aerial.active ? this.engine.camera.position.z : p.z;
     tickSignals(dt);
+    this.parked.syncPlayerBlockers();
     if (!this.wasInsideHome) {
       this.pedestrians.update(dt, cullX, cullZ, this.clock.hourFloat);
       const car = this.parked.activeMesh;
@@ -515,6 +700,8 @@ export class GameApp {
       this.trafficObstacles.length = 1;
       for (const c of this.pedestrians.crossers) this.trafficObstacles.push(c);
       this.traffic.update(dt, cullX, cullZ);
+      this.traffic.syncPlayerBlockers(this.collisions);
+      this.taxis.syncPlayerBlockers(this.collisions);
       this.taxis.cull(cullX, cullZ);
       this.cityCull.update(dt, this.cityRoot, cullX, cullZ);
       this.chunks.update(dt, cullX, cullZ);
@@ -522,6 +709,11 @@ export class GameApp {
     if (!this.aerial.active) this.engine.followShadows(p.x, p.z);
     this.cityMap.updatePlayer(p.x, p.z);
     this.density.update(dt, cullX, cullZ, this.aerial.active ? this.engine.camera.rotation.y : this.player.object.rotation.y);
+
+    for (const part of this.spinParts) {
+      if (part.name === 'rotor-tail') part.rotation.x += dt * 14;
+      else part.rotation.y += dt * 9;
+    }
 
     this.audio.update(dt, {
       walking: this.player.moving && !driving,
@@ -581,6 +773,7 @@ export class GameApp {
     }
     if (save.wardrobe) replaceWardrobe(save.wardrobe);
     if (save.fashionOwned) replaceOwned(save.fashionOwned);
+    this.parked.applyOwned(save.ownedCars);
   }
 
   private saveGame(silent = false): void {
@@ -599,6 +792,7 @@ export class GameApp {
       look: loadLook(),
       wardrobe: loadWardrobe(),
       fashionOwned: ownedItems(),
+      ownedCars: this.parked.serializeOwned(),
     });
     if (!silent) {
       this.hud.notify('Partie sauvegardée');
@@ -620,7 +814,10 @@ export class GameApp {
       onClose: () => {
         this.releasePointerLock();
       },
-      onOpenMap: () => this.toggleMap(),
+      onOpenMap: () => {
+        this.phone.hide();
+        this.toggleMap();
+      },
       onOrderTaxi: (dest) => this.orderRide(dest),
       getMoney: () => this.money,
       getMood: () => this.needs.moodLabel(),
@@ -633,6 +830,14 @@ export class GameApp {
         x: this.player.object.position.x,
         z: this.player.object.position.z,
       }),
+      getDistrict: () => {
+        const p = this.player.object.position;
+        return findDistrictAt(p.x, p.z)?.name ?? 'Yaoundé';
+      },
+      getNearestPlace: () => {
+        const p = this.player.object.position;
+        return nearestLandmark(p.x, p.z, 220)?.name ?? 'Centre-ville';
+      },
       destinations: this.taxis.destinations,
     });
   }
@@ -672,7 +877,9 @@ export class GameApp {
       onTop: (topId) => this.commitLook({ topId }),
       onBottom: (bottomId) => this.commitLook({ bottomId }),
       onShoes: (shoeId) => this.commitLook({ shoeId }),
-      onDress: (id) => this.commitLook({ topId: id, bottomId: id }),
+      onSuit: (id) => this.commitLook({ topId: id, bottomId: id }),
+      onDressPick: (dressId) => this.commitLook({ dressId }),
+      onDressColor: (dressColor) => this.commitLook({ dressColor }),
       onView: (view) => this.cameraRig.snapCreator(view, this.player.object.rotation.y),
       onPose: (pose) => {
         const animator = this.player.object.userData.animator as
@@ -757,10 +964,17 @@ export class GameApp {
       this.closeCharacterLook(false);
       return;
     }
-    this.openCharacterLook();
+    // You get changed at home or at a hair salon, not in the middle of the street.
+    const p = this.player.object.position;
+    const salon = nearestSalon(p.x, p.z);
+    if (!this.wasInsideHome && !salon) {
+      this.hud.notify('Change de look chez toi ou dans un salon de coiffure', 3600);
+      return;
+    }
+    this.openCharacterLook(salon?.name);
   }
 
-  private openCharacterLook(): void {
+  private openCharacterLook(salonName?: string): void {
     this.audio.playUi();
     this.input.blockPointerLock = true;
     if (document.pointerLockElement) document.exitPointerLock();
@@ -782,7 +996,11 @@ export class GameApp {
     this.studio.enter(this.engine.scene, player.position);
     this.cameraRig.beginCreatorView(yaw);
     this.hud.showLookPanel(loadLook(), this.lookMenu());
-    this.hud.setTip('Glisse pour tourner · molette pour zoomer · Échap annule');
+    this.hud.setTip(
+      salonName
+        ? `${salonName} — glisse pour tourner · molette zoome · Échap annule`
+        : 'Glisse pour tourner · molette pour zoomer · Échap annule',
+    );
   }
 
   private closeCharacterLook(restore = false): void {
@@ -823,7 +1041,9 @@ export class GameApp {
   }
 
   private buyFashion(ids: string[]): void {
-    const items = ids.map((id) => accessoryById(id)).filter((item) => item && !isOwned(item.id));
+    const items = ids
+      .map((id) => accessoryById(id) ?? dressById(id))
+      .filter((item) => item && !isOwned(item.id));
     const total = items.reduce((sum, item) => sum + (item?.price ?? 0), 0);
     if (items.length === 0) return;
     if (total > this.money) {
@@ -855,7 +1075,11 @@ export class GameApp {
     }
     this.hud.setTip('Chargement du personnage…');
     void mountRiggedPlayer(avatar, this.engine.renderer, next.characterId).then((ok) => {
-      if (!ok) this.hud.notify('Ce personnage n’a pas pu être chargé');
+      if (!ok) {
+        // No rig: tint the procedural avatar so the choice is still visible.
+        applyAppearance(avatar, next);
+        this.hud.notify('Ce personnage n’a pas pu être chargé');
+      }
       else if (this.hud.isLookPanelOpen()) this.hud.setTip('Glisse pour tourner · molette pour zoomer · Échap annule');
       if (this.hud.isLookPanelOpen()) this.hud.showLookPanel(loadLook(), this.lookMenu());
     });
@@ -906,7 +1130,7 @@ export class GameApp {
         };
       },
       onQuitHint: () => {
-        this.hud.notify('E interagir · P téléphone · Esc pause · M carte · V aérien · F3 perfs · F4 densité');
+        this.hud.notify('E interagir · P téléphone · Esc pause · M carte · V change la vue · F3 perfs · F4 densité');
       },
     });
   }
@@ -1003,7 +1227,7 @@ export class GameApp {
     this.input.blockPointerLock = true;
     this.dialogue.show(
       npc.name,
-      npc.role,
+      roleLabel(npc.role as NpcRole),
       pack.lines,
       pack.choices,
       {
@@ -1031,13 +1255,85 @@ export class GameApp {
   private enterHomeMode(): void {
     if (!this.houseRoot) return;
     setHomeInteriorMode(this.houseRoot, this.cityRoot, this.engine.scene, true);
-    this.cameraRig.beginIndoorView();
-    this.furniture.setEnabled(true);
-    this.hud.setFurnitureMode(true);
-    this.input.blockPointerLock = true;
-    if (document.pointerLockElement) document.exitPointerLock();
     this.hud.setHomeMode(true);
-    this.hud.setTip('Mode meubles — clique et glisse · R tourne · Suppr range · molette zoome');
+    this.setHomeView(this.homeView);
+    this.setFurnitureMode(false);
+    this.hud.setTip('Chez toi — V change la vue · Meubles pour déplacer · E agir');
+  }
+
+  /** 3/4, plan, shoulder — works at home and in the street. */
+  private cycleHomeView(): void {
+    if (this.aerial.active) return;
+    const i = HOME_VIEWS.findIndex((v) => v.id === this.homeView);
+    const next = HOME_VIEWS[(i + 1) % HOME_VIEWS.length]!;
+    this.setHomeView(next.id);
+    this.audio.playUi();
+    if (this.wasInsideHome && this.furniture.enabled) {
+      this.setFurnitureMode(false);
+    }
+    this.hud.setTip(
+      this.wasInsideHome
+        ? `${next.label} — molette pour zoomer · glisse pour tourner`
+        : `${next.label} — V change la vue`,
+    );
+  }
+
+  private setHomeView(view: HomeView): void {
+    this.homeView = view;
+    this.hud.setHomeView(view);
+    if (this.wasInsideHome) {
+      this.cameraRig.beginIndoorView(view);
+      if (this.houseRoot) setHomeCeilingVisible(this.houseRoot, view === 'shoulder');
+      return;
+    }
+    this.cameraRig.beginOutdoorView(view);
+  }
+
+  /** Follow-cam options for the street / mall / car when not in shoulder view. */
+  private streetCamOpts(extra?: { distance?: number; lookHeight?: number }): {
+    isometric?: boolean;
+    homeView?: HomeView;
+    outdoor?: boolean;
+    distance?: number;
+    lookHeight?: number;
+  } | undefined {
+    if (this.homeView === 'shoulder') return extra;
+    return { isometric: true, homeView: this.homeView, outdoor: true, ...extra };
+  }
+
+  /** Shoulder view sits in the cabin; 3/4 and plan stay outside. */
+  private updateDriveCamera(car: THREE.Object3D, dt: number): void {
+    if (this.homeView === 'shoulder') {
+      this.cameraRig.update(car, dt, { distance: 0.2, lookHeight: 1.16 });
+      const cockpit = car.userData.cockpit as THREE.Object3D | undefined;
+      if (cockpit) {
+        cockpit.updateWorldMatrix(true, false);
+        this.engine.camera.position.setFromMatrixPosition(cockpit.matrixWorld);
+        this.cockpitLook.set(0.22, -0.08, 2.4);
+        cockpit.localToWorld(this.cockpitLook);
+        this.engine.camera.lookAt(this.cockpitLook);
+        if (Math.abs(this.engine.camera.fov - 62) > 0.05) {
+          this.engine.camera.fov = 62;
+          this.engine.camera.updateProjectionMatrix();
+        }
+      }
+      return;
+    }
+    this.cameraRig.update(car, dt, this.streetCamOpts({ distance: 11, lookHeight: 1.2 }));
+  }
+
+  /** Single place that keeps build mode, its button and the pointer lock in sync. */
+  private setFurnitureMode(on: boolean): void {
+    this.furniture.setEnabled(on);
+    this.hud.setFurnitureMode(on);
+    if (on) {
+      this.input.blockPointerLock = true;
+      if (document.pointerLockElement) document.exitPointerLock();
+      this.cameraRig.beginIndoorView('plan');
+      if (this.houseRoot) setHomeCeilingVisible(this.houseRoot, false);
+      return;
+    }
+    this.releasePointerLock();
   }
 
   private refreshDayNight(): void {
@@ -1052,23 +1348,21 @@ export class GameApp {
     this.hud.hideDecorShop();
     setHomeInteriorMode(this.houseRoot, this.cityRoot, this.engine.scene, false);
     this.hud.setHomeMode(false);
+    this.cameraRig.beginOutdoorView(this.homeView);
     this.releasePointerLock();
   }
 
   private toggleFurniture(): void {
     if (!this.wasInsideHome) return;
     const next = !this.furniture.enabled;
-    this.furniture.setEnabled(next);
-    this.hud.setFurnitureMode(next);
+    this.setFurnitureMode(next);
     if (next) {
-      this.input.blockPointerLock = true;
-      if (document.pointerLockElement) document.exitPointerLock();
       this.hud.setTip('Glisse un meuble · R tourne · Suppr range · F ou Finir pour terminer');
       this.audio.playUi();
       return;
     }
-    this.releasePointerLock();
-    this.hud.setTip('Chez toi — glisse pour regarder · E agir · Meubles pour déplacer');
+    this.setHomeView(this.homeView);
+    this.hud.setTip('Chez toi — V change la vue · E agir · Meubles pour déplacer');
   }
 
   private onFurnitureMoved(id: string, pose: FurnPose, commit: boolean): void {
@@ -1169,6 +1463,148 @@ export class GameApp {
     this.furniture.dropSelection();
   }
 
+  private openMallShop(spot: MallSpot): void {
+    this.openCounterShop(spot.name, spot.offers ?? []);
+  }
+
+  private openSantaShop(spot: SantaSpot): void {
+    this.openCounterShop(spot.name, spot.offers);
+  }
+
+  private useVenueSpot(spot: VenueSpot): void {
+    if (VENUES.find((v) => v.id === spot.venueId)?.restricted) {
+      this.hud.notify('Accès interdit — les militaires tiennent le périmètre');
+      return;
+    }
+    if (spot.kind === 'job') {
+      this.startJob(spot);
+      return;
+    }
+    if (spot.kind === 'ritual') {
+      const price = spot.price ?? 0;
+      if (price > this.money) {
+        this.hud.notify('Pas assez de FCFA');
+        return;
+      }
+      if (price) this.money -= price;
+      if (spot.boost) this.needs.applyBoost(spot.boost);
+      this.hud.setMoney(this.money);
+      this.hud.setNeeds(this.needs.snapshot(), this.needs.moodLabel());
+      this.audio.playConfirm();
+      this.hud.notify(price ? `${spot.name} · −${price.toLocaleString('fr-FR')} FCFA` : spot.name);
+      this.hud.setTip(spot.blurb);
+      return;
+    }
+    this.openCounterShop(spot.name, spot.offers ?? []);
+  }
+
+  private updatePalaceSecurity(dt: number, driving: boolean): void {
+    this.fadePalaceTracers(dt);
+    const p = this.player.object.position;
+    const zone = palaceZone(p.x, p.z);
+    if (zone === 'safe') {
+      this.palaceWarned = false;
+      this.palaceFireAcc = 0;
+      return;
+    }
+    if (zone === 'warn') {
+      this.palaceFireAcc = 0;
+      if (!this.palaceWarned) {
+        this.palaceWarned = true;
+        this.hud.notify('Halte ! Zone militaire — reculez', 4200);
+        this.audio.playUi();
+      }
+      this.hud.setDistrict('Etoudi · zone militaire');
+      this.hud.setTip('Accès interdit — les militaires ouvrent le feu si tu forces');
+      this.hud.setPrompt('⛔ Recule');
+      return;
+    }
+
+    if (driving) this.parked.exit(this.player.object);
+    this.palaceFireAcc += dt;
+    this.hud.setDistrict('Palais · tirs');
+    this.hud.setTip('Les militaires ouvrent le feu !');
+    this.hud.setPrompt('⛔ Sors du périmètre');
+    if (this.palaceFireAcc < 0.36) return;
+    this.palaceFireAcc = 0;
+
+    const downed = this.needs.takeDamage(16);
+    this.audio.playShot();
+    this.spawnPalaceTracers(p.x, p.y + 1.25, p.z);
+    const eject = palaceEjectPos();
+    const dx = eject.x - p.x;
+    const dz = eject.z - p.z;
+    const len = Math.hypot(dx, dz) || 1;
+    p.x += (dx / len) * 4.8;
+    p.z += (dz / len) * 4.8;
+    this.hud.setNeeds(this.needs.snapshot(), this.needs.moodLabel());
+    this.hud.notify('Les militaires ouvrent le feu !', 2000);
+    if (downed || this.needs.health < 18) {
+      p.x = eject.x;
+      p.y = 0;
+      p.z = eject.z;
+      this.needs.health = Math.max(this.needs.health, 12);
+      this.hud.setNeeds(this.needs.snapshot(), this.needs.moodLabel());
+      this.hud.notify('Tu es évacué hors du périmètre', 4000);
+    }
+  }
+
+  private spawnPalaceTracers(tx: number, ty: number, tz: number): void {
+    this.clearPalaceTracers();
+    const mat = new THREE.LineBasicMaterial({
+      color: 0xffe082,
+      transparent: true,
+      opacity: 0.9,
+    });
+    for (const m of nearestPalaceMuzzles(tx, tz, 2)) {
+      const geo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(m.x, m.y, m.z),
+        new THREE.Vector3(tx, ty, tz),
+      ]);
+      const line = new THREE.Line(geo, mat);
+      line.frustumCulled = false;
+      this.engine.scene.add(line);
+      this.palaceTracers.push(line);
+    }
+    this.palaceTracerLife = 0.14;
+  }
+
+  private fadePalaceTracers(dt: number): void {
+    if (!this.palaceTracers.length) return;
+    this.palaceTracerLife -= dt;
+    const fade = Math.max(0, this.palaceTracerLife / 0.14);
+    for (const line of this.palaceTracers) {
+      const mat = line.material as THREE.LineBasicMaterial;
+      mat.opacity = 0.9 * fade;
+    }
+    if (this.palaceTracerLife <= 0) this.clearPalaceTracers();
+  }
+
+  private clearPalaceTracers(): void {
+    for (const line of this.palaceTracers) {
+      this.engine.scene.remove(line);
+      line.geometry.dispose();
+      const mat = line.material;
+      if (!Array.isArray(mat)) mat.dispose();
+    }
+    this.palaceTracers.length = 0;
+  }
+
+  private openCounterShop(name: string, offers: ShopOffer[]): void {
+    if (!offers.length) return;
+    this.audio.playUi();
+    this.hud.showShopMenu(
+      name,
+      offers,
+      (id) => {
+        const offer = offers.find((o) => o.id === id);
+        if (!offer) return;
+        this.buyLifeOffer(offer, `Achat · ${name}`);
+      },
+      () => undefined,
+    );
+  }
+
   private openLifeShop(spot: LifeSpot): void {
     const offers = offersFor(spot);
     if (!offers.length) return;
@@ -1185,21 +1621,19 @@ export class GameApp {
     );
   }
 
-  private buyLifeOffer(offer: ShopOffer): void {
+  private buyLifeOffer(offer: ShopOffer, tip?: string): void {
     if (this.money < offer.price) {
       this.hud.notify('Pas assez de FCFA');
       return;
     }
     this.money -= offer.price;
-    if (offer.item) {
-      this.needs.consume(offer.item);
-      this.hud.setTip('Besoins améliorés — continue ta journée');
-    } else {
-      // Phone / accessory purchase on Avenue Kennedy
+    if (offer.item) this.needs.consume(offer.item);
+    if (offer.boost) this.needs.applyBoost(offer.boost);
+    else if (!offer.item) {
       this.needs.fun = Math.min(100, this.needs.fun + 18);
       this.needs.social = Math.min(100, this.needs.social + 8);
-      this.hud.setTip('Achat téléphone · Avenue Kennedy');
     }
+    this.hud.setTip(tip ?? (offer.item ? 'Besoins améliorés — continue ta journée' : 'Achat téléphone · Avenue Kennedy'));
     this.hud.setMoney(this.money);
     this.hud.setNeeds(this.needs.snapshot(), this.needs.moodLabel());
     this.hud.hideShopMenu();
@@ -1207,7 +1641,7 @@ export class GameApp {
     this.hud.notify(`${offer.label} · −${offer.price.toLocaleString('fr-FR')} FCFA`);
   }
 
-  private startJob(spot: LifeSpot): void {
+  private startJob(spot: { id: string; name: string; x: number; z: number }): void {
     // ~3 minutes real-time cooldown between jobs
     if (this.lastJobAt > 0 && Date.now() - this.lastJobAt < 3 * 60 * 1000) {
       this.hud.notify('Repos déjà — reviens dans un moment');
@@ -1303,11 +1737,54 @@ export class GameApp {
       return;
     }
 
+    const mall = nearestMallSpot(p.x, p.z, p.y);
+    if (mall) {
+      if (mall.kind === 'job') {
+        this.startJob(mall);
+        return;
+      }
+      this.openMallShop(mall);
+      return;
+    }
+    if (isInsideMfoundiMall(p.x, p.z)) {
+      this.hud.setTip('Approche un vendeur pour acheter, l’escalier pour l’étage, ou l’accueil pour travailler');
+      return;
+    }
+
+    const santa = nearestSantaSpot(p.x, p.z, p.y);
+    if (santa) {
+      this.openSantaShop(santa);
+      return;
+    }
+    if (isInsideSantaLucia(p.x, p.z)) {
+      this.hud.setTip('Approche un rayon, la boulangerie, ou monte à l’étage');
+      return;
+    }
+
+    const venueSpot = nearestVenueSpot(p.x, p.z);
+    if (venueSpot) {
+      this.useVenueSpot(venueSpot);
+      return;
+    }
+    const venueHere = venueAt(p.x, p.z);
+    if (venueHere?.restricted) {
+      this.hud.notify('Accès interdit — recule');
+      return;
+    }
+    if (venueHere) {
+      this.hud.setTip('Approche un comptoir, l’autel ou un agent');
+      return;
+    }
+
     // City shops / jobs
     const life = nearestLifeSpot(p.x, p.z);
     if (life) {
       if (life.kind === 'job') {
         this.startJob(life);
+        return;
+      }
+      if (life.kind === 'salon') {
+        this.openCharacterLook(life.name);
         return;
       }
       this.openLifeShop(life);
@@ -1332,6 +1809,25 @@ export class GameApp {
         this.audio.playConfirm();
         this.hud.setTip(result.tip);
       }
+      return;
+    }
+
+    const sale = this.parked.nearestForSale(p.x, p.z, 5.2);
+    if (sale) {
+      const price = Number(sale.mesh.userData.salePrice) || 0;
+      const label = (sale.mesh.userData.saleLabel as string) || 'Voiture';
+      if (price > this.money) {
+        this.hud.notify('Pas assez de FCFA');
+        return;
+      }
+      this.money -= price;
+      sale.mesh.userData.owned = true;
+      sale.mesh.userData.driveable = true;
+      this.hud.setMoney(this.money);
+      this.audio.playConfirm();
+      this.hud.notify(`Acheté · ${label} · −${price.toLocaleString('fr-FR')} FCFA`);
+      this.hud.setTip('E pour monter et conduire');
+      this.saveGame(true);
       return;
     }
 
@@ -1361,44 +1857,52 @@ export class GameApp {
     );
   }
 
-  private toggleAerial(): void {
-    if (this.taxis.isRiding()) return;
-    if (this.parked.driving) return;
-    if (this.wasInsideHome) return;
-    if (this.cityMap.isOpen()) this.cityMap.hide();
-    this.hud.hideTaxiMenu();
-    this.hud.hideDecorShop();
-
-    if (this.aerial.active) {
-      this.aerial.exit();
-      this.engine.setAerialBudget(false);
-      this.releasePointerLock();
-      this.hud.setTip('Retour au sol');
-      return;
-    }
-
-    const p = this.player.object.position;
-    this.aerial.enter(p.x, p.z);
-    this.engine.setAerialBudget(true);
-    this.input.blockPointerLock = true;
-  }
-
   private toggleMap(): void {
     if (this.taxis.isRiding()) return;
     if (this.parked.driving) return;
-    if (this.aerial.active) return;
-    if (this.cityMap.isOpen()) {
-      this.cityMap.hide();
+    if (this.cityMap.isOpen() || this.aerial.active) {
+      this.closeMap();
       return;
     }
     this.hud.hideTaxiMenu();
     this.hud.hideDecorShop();
     this.taxis.closeMenu();
+    if (this.phone.isOpen()) this.phone.hide();
     const p = this.player.object.position;
+    if (this.wasInsideHome && this.houseRoot) {
+      setHomeInteriorMode(this.houseRoot, this.cityRoot, this.engine.scene, false);
+      this.mapLiftedHome = true;
+    }
+    this.aerial.enter(p.x, p.z);
+    this.engine.setAerialBudget(true);
+    this.input.blockPointerLock = true;
     this.cityMap.show(p.x, p.z, this.taxis.destinations, {
-      onOrderRide: (dest) => this.orderRide(dest),
-      onClose: () => undefined,
+      onOrderRide: (dest) => {
+        this.closeMap();
+        this.orderRide(dest);
+      },
+      onClose: () => this.closeMap(),
     });
+  }
+
+  private closeMap(): void {
+    if (this.aerial.active) {
+      this.aerial.exit();
+      this.engine.setAerialBudget(false);
+      this.releasePointerLock();
+    }
+    if (this.cityMap.isOpen()) this.cityMap.hide();
+    if (this.mapLiftedHome && this.houseRoot) {
+      setHomeInteriorMode(this.houseRoot, this.cityRoot, this.engine.scene, true);
+      this.mapLiftedHome = false;
+    }
+  }
+
+  private pickMapGround(click: { clientX: number; clientY: number }): void {
+    this.mapNdc.set((click.clientX / window.innerWidth) * 2 - 1, -(click.clientY / window.innerHeight) * 2 + 1);
+    this.mapRay.setFromCamera(this.mapNdc, this.engine.camera);
+    if (!this.mapRay.ray.intersectPlane(this.mapGround, this.mapHit)) return;
+    this.cityMap.pickWorld(this.mapHit.x, this.mapHit.z);
   }
 
   private orderRide(dest: TaxiDestination): void {

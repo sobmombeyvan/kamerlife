@@ -13,6 +13,7 @@ import type { CollisionSystem } from '../world/CollisionSystem';
 import type { Input } from '../core/Input';
 import { createBrandVehicle, pickParkedBrand } from './VehicleFactory';
 import { vehicleBlockedByPlayerHouse } from '../landmarks/PlayerHouse';
+import { CityUniforms } from '../render/nightState';
 
 export type ParkedCar = {
   mesh: THREE.Group;
@@ -27,6 +28,8 @@ export class ParkedCarSystem {
   private readonly cars: ParkedCar[] = [];
   private active: ParkedCar | null = null;
   private speed = 0;
+  private prevSpeed = 0;
+  private blinkT = 0;
   private readonly maxSpeed = 28;
   private readonly maxReverse = 10;
 
@@ -61,10 +64,12 @@ export class ParkedCarSystem {
   /** Collect any driveable meshes already in the city graph. */
   collectFrom(root: THREE.Object3D): void {
     root.traverse((obj) => {
-      if (obj instanceof THREE.Group && obj.userData.driveable && !this.cars.some((c) => c.mesh === obj)) {
-        this.enableMotion(obj);
-        this.cars.push({ mesh: obj, occupied: false });
-      }
+      if (!(obj instanceof THREE.Group)) return;
+      const sale = !!obj.userData.forSale;
+      const drive = !!obj.userData.driveable;
+      if ((!drive && !sale) || this.cars.some((c) => c.mesh === obj)) return;
+      this.enableMotion(obj);
+      this.cars.push({ mesh: obj, occupied: false });
     });
   }
 
@@ -80,6 +85,7 @@ export class ParkedCarSystem {
     let bestD = maxDist;
     for (const c of this.cars) {
       if (c.occupied) continue;
+      if (c.mesh.userData.forSale && !c.mesh.userData.owned) continue;
       const d = Math.hypot(c.mesh.position.x - x, c.mesh.position.z - z);
       if (d < bestD) {
         bestD = d;
@@ -89,13 +95,56 @@ export class ParkedCarSystem {
     return best;
   }
 
+  nearestForSale(x: number, z: number, maxDist = 5.2): ParkedCar | null {
+    let best: ParkedCar | null = null;
+    let bestD = maxDist;
+    for (const c of this.cars) {
+      if (!c.mesh.userData.forSale || c.mesh.userData.owned) continue;
+      const d = Math.hypot(c.mesh.position.x - x, c.mesh.position.z - z);
+      if (d < bestD) {
+        bestD = d;
+        best = c;
+      }
+    }
+    return best;
+  }
+
+  serializeOwned(): { sku: string; x: number; z: number; yaw: number }[] {
+    const out: { sku: string; x: number; z: number; yaw: number }[] = [];
+    for (const c of this.cars) {
+      const sku = c.mesh.userData.sku as string | undefined;
+      if (!sku || !c.mesh.userData.owned) continue;
+      out.push({
+        sku,
+        x: c.mesh.position.x,
+        z: c.mesh.position.z,
+        yaw: c.mesh.rotation.y,
+      });
+    }
+    return out;
+  }
+
+  applyOwned(list: { sku: string; x: number; z: number; yaw: number }[] | undefined): void {
+    if (!list?.length) return;
+    for (const s of list) {
+      const car = this.cars.find((c) => c.mesh.userData.sku === s.sku);
+      if (!car) continue;
+      car.mesh.userData.owned = true;
+      car.mesh.userData.driveable = true;
+      car.mesh.position.set(s.x, 0, s.z);
+      car.mesh.rotation.y = s.yaw;
+    }
+  }
+
   tryEnter(player: THREE.Object3D): boolean {
     if (this.active) return false;
     const car = this.nearest(player.position.x, player.position.z, 5.5);
     if (!car) return false;
+    if (car.mesh.userData.forSale && !car.mesh.userData.owned) return false;
     this.active = car;
     car.occupied = true;
     this.speed = 0;
+    this.prevSpeed = 0;
     player.visible = false;
     player.position.copy(car.mesh.position);
     return true;
@@ -112,8 +161,10 @@ export class ParkedCarSystem {
     player.rotation.y = yaw;
     player.visible = true;
     car.occupied = false;
+    this.resetMotion(car.mesh);
     this.active = null;
     this.speed = 0;
+    this.prevSpeed = 0;
     return true;
   }
 
@@ -225,7 +276,76 @@ export class ParkedCarSystem {
     player.position.set(car.position.x, 0, car.position.z);
     player.rotation.y = car.rotation.y;
 
+    this.blinkT += cap;
+    this.animateDrive(car, cap, throttle, steerInput);
+    this.prevSpeed = this.speed;
+
     return car;
+  }
+
+  private resetMotion(car: THREE.Group): void {
+    const chassis = car.userData.chassis as THREE.Group | undefined;
+    if (chassis) chassis.rotation.x = 0;
+    const steers = car.userData.steerWheels as THREE.Group[] | undefined;
+    if (steers) for (const s of steers) s.rotation.y = 0;
+    const brake = car.userData.brakeMat as THREE.MeshStandardMaterial | undefined;
+    if (brake) brake.emissiveIntensity = 0.22;
+    const rev = car.userData.reverseMat as THREE.MeshStandardMaterial | undefined;
+    if (rev) rev.emissiveIntensity = 0.08;
+  }
+
+  private animateDrive(
+    car: THREE.Group,
+    dt: number,
+    throttle: number,
+    steerInput: number,
+  ): void {
+    const radius = (car.userData.wheelRadius as number | undefined) ?? 0.32;
+    const ang = (this.speed * dt) / Math.max(0.12, radius);
+    const spins = car.userData.spinWheels as THREE.Group[] | undefined;
+    if (spins) for (const w of spins) w.rotation.x += ang;
+
+    const steers = car.userData.steerWheels as THREE.Group[] | undefined;
+    const steerAng = THREE.MathUtils.clamp(-steerInput * 0.42, -0.5, 0.5);
+    if (steers) for (const s of steers) s.rotation.y = steerAng;
+
+    const chassis = car.userData.chassis as THREE.Group | undefined;
+    if (chassis) {
+      const pitch = THREE.MathUtils.clamp(-throttle * 0.035, -0.05, 0.05);
+      chassis.rotation.x = THREE.MathUtils.lerp(chassis.rotation.x, pitch, Math.min(1, dt * 8));
+    }
+
+    const braking =
+      throttle < -0.12 || (this.speed > 1.5 && throttle < 0.04 && this.speed < this.prevSpeed);
+    const reversing = this.speed < -0.4;
+    const night = CityUniforms.uNight.value;
+    const head = car.userData.headMat as THREE.MeshStandardMaterial | undefined;
+    if (head) head.emissiveIntensity = 0.28 + night * 2.15;
+    const brake = car.userData.brakeMat as THREE.MeshStandardMaterial | undefined;
+    if (brake) brake.emissiveIntensity = braking ? 2.6 : 0.22;
+    const rev = car.userData.reverseMat as THREE.MeshStandardMaterial | undefined;
+    if (rev) rev.emissiveIntensity = reversing ? 1.8 : 0.08;
+    const ind = car.userData.indicatorMat as THREE.MeshStandardMaterial | undefined;
+    if (ind) {
+      ind.emissiveIntensity =
+        Math.abs(steerInput) > 0.45 ? (Math.sin(this.blinkT * 10) > 0 ? 2.2 : 0.1) : 0.12;
+    }
+  }
+
+  /** Solid bodies so the walker cannot step through parked or driven cars. */
+  syncPlayerBlockers(): void {
+    for (let i = 0; i < this.cars.length; i++) {
+      const c = this.cars[i]!;
+      const id = `parked-${i}`;
+      if (c === this.active || !c.mesh.visible) {
+        this.collisions.clearDynamicBox(id);
+        continue;
+      }
+      const m = c.mesh;
+      const halfL = (m.userData.halfLength as number | undefined) ?? 2.05;
+      const halfW = (m.userData.halfWidth as number | undefined) ?? 1.05;
+      this.collisions.setVehicleBox(id, m.position.x, m.position.z, m.rotation.y, halfL, halfW);
+    }
   }
 
   private spawnAlongSidewalks(): void {

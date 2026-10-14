@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { surfaceMaps } from '../render/surfaces';
 import { CityUniforms } from '../render/nightState';
+import { cssToRgb, drawSignFace } from '../render/designedArt';
 
 export type KitKind = 'kit' | 'metal' | 'tin' | 'glow' | 'ground' | 'leaf' | 'asphalt' | 'walk' | 'grass';
 
@@ -213,8 +214,8 @@ export function poolMaterial(): THREE.MeshBasicMaterial {
 // ---------------------------------------------------------------------------
 // Sign atlas: fictional shop names painted on demand, backlit at night.
 
-const SIGN_W = 408;
-const SIGN_H = 52;
+const SIGN_W = 640;
+const SIGN_H = 96;
 const SIGN_COLS = 5;
 const SIGN_ROWS = 39;
 const signCanvas = document.createElement('canvas');
@@ -240,21 +241,13 @@ export function signSlot(text: string, style: SignStyle): [number, number, numbe
   const x = col * SIGN_W;
   const y = row * SIGN_H;
   const c = signCtx;
-  c.fillStyle = style.bg;
-  c.fillRect(x, y, SIGN_W, SIGN_H);
-  c.fillStyle = style.accent ?? 'rgba(255,255,255,0.18)';
-  c.fillRect(x, y + SIGN_H - 7, SIGN_W, 7);
-  c.fillRect(x, y, SIGN_W, 4);
-  c.fillStyle = style.fg;
-  let font = 32;
-  c.font = `800 ${font}px "Segoe UI", Arial, sans-serif`;
-  while (c.measureText(text).width > SIGN_W - 24 && font > 14) {
-    font -= 2;
-    c.font = `800 ${font}px "Segoe UI", Arial, sans-serif`;
-  }
-  c.textAlign = 'center';
-  c.textBaseline = 'middle';
-  c.fillText(text, x + SIGN_W / 2, y + SIGN_H / 2 + 1);
+  c.save();
+  c.beginPath();
+  c.rect(x, y, SIGN_W, SIGN_H);
+  c.clip();
+  c.translate(x, y);
+  drawSignFace(c, SIGN_W, SIGN_H, text, undefined, cssToRgb(style.bg), cssToRgb(style.fg));
+  c.restore();
   signTex.needsUpdate = true;
   const rect: [number, number, number, number] = [
     x / signCanvas.width,

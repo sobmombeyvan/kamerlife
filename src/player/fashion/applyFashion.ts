@@ -1,11 +1,14 @@
 import * as THREE from 'three';
 import {
   accessoryColor,
+  dressColorHex,
   equippedAccessories,
+  equippedDress,
   HAIR,
   isBuiltHair,
   type PlayerLook,
 } from '../PlayerLook';
+import { buildDress, dressById } from './dresses';
 import { BLUSHES, LIPS, SHADOWS, accessoryById, type AccessorySlot } from './catalog';
 import { buildAccessory, disposeObject } from './accessories';
 import { buildHair, builtHairPad } from './builtHair';
@@ -17,6 +20,7 @@ type Slot = { key: string; obj: THREE.Object3D | null };
 type FashionState = {
   hair: Slot;
   beard: Slot;
+  dress: Slot;
   makeup: { key: string; objs: THREE.Object3D[] };
   acc: Partial<Record<AccessorySlot, Slot>>;
 };
@@ -26,7 +30,13 @@ const IDENTITY = new THREE.Matrix4();
 function state(model: THREE.Object3D): FashionState {
   let s = model.userData.fashion as FashionState | undefined;
   if (!s) {
-    s = { hair: { key: '', obj: null }, beard: { key: '', obj: null }, makeup: { key: '', objs: [] }, acc: {} };
+    s = {
+      hair: { key: '', obj: null },
+      beard: { key: '', obj: null },
+      dress: { key: '', obj: null },
+      makeup: { key: '', objs: [] },
+      acc: {},
+    };
     model.userData.fashion = s;
   }
   return s;
@@ -88,6 +98,37 @@ export function applyFashion(root: THREE.Object3D, look: PlayerLook): void {
     else if (group) disposeObject(group);
   }
 
+  const dress = equippedDress(look);
+  const dressDef = dress ? dressById(dress.id) : undefined;
+  const dressKey = dress && dressDef ? `${dress.id}-${dressColorHex(dress.id, dress.color)}` : '';
+  if (dressKey !== s.dress.key) {
+    drop(s.dress.obj);
+    s.dress = { key: dressKey, obj: null };
+    if (dress && dressDef) {
+      const group = buildDress(dressDef, fit, dressColorHex(dress.id, dress.color));
+      if (attachToBone(model, fit, 'spine_02', group, IDENTITY)) s.dress.obj = group;
+      else disposeObject(group);
+    }
+  }
+  // Keep authored clothes visible: they are the only torso and leg meshes.
+  // Recolor the shirt as the bodice and the trousers as skin so a mini
+  // still has legs, then drape the procedural dress over both.
+  const wearingDress = !!s.dress.obj;
+  const tops = (root.userData.topMeshes as THREE.Mesh[] | undefined) ?? [];
+  const bottoms = (root.userData.bottomMeshes as THREE.Mesh[] | undefined) ?? [];
+  for (const mesh of [...tops, ...bottoms]) mesh.visible = true;
+  const legScale = wearingDress ? 0.86 : 1;
+  for (const mesh of bottoms) mesh.scale.set(legScale, 1, legScale);
+  if (wearingDress) {
+    const dressHex = dress ? dressColorHex(dress.id, dress.color) : 0x2b2b2b;
+    tintSolid(root.userData.shirtMats, dressHex);
+    // Same color as the skirt, so thighs poking through read as fabric, not pants.
+    tintSolid(root.userData.pantsMats, dressHex);
+  } else {
+    restoreMaps(root.userData.shirtMats);
+    restoreMaps(root.userData.pantsMats);
+  }
+
   const hairMeshes = (root.userData.hairMeshes as THREE.Mesh[] | undefined) ?? [];
   const showOriginal = !covered && (look.hairStyle === 'courte' || look.hairStyle === 'queue');
   for (const mesh of hairMeshes) mesh.visible = showOriginal;
@@ -123,11 +164,30 @@ export function applyFashion(root: THREE.Object3D, look: PlayerLook): void {
   }
 }
 
+function tintSolid(list: THREE.MeshStandardMaterial[] | undefined, hex: number): void {
+  if (!list) return;
+  for (const mat of list) {
+    if (mat.userData.prevMap === undefined) mat.userData.prevMap = mat.map;
+    mat.map = null;
+    mat.color.setHex(hex);
+    mat.emissive.setHex(0x000000);
+    mat.emissiveIntensity = 0;
+  }
+}
+
+function restoreMaps(list: THREE.MeshStandardMaterial[] | undefined): void {
+  if (!list) return;
+  for (const mat of list) {
+    if (mat.userData.prevMap !== undefined) mat.map = mat.userData.prevMap;
+  }
+}
+
 export function disposeFashion(model: THREE.Object3D): void {
   const s = model.userData.fashion as FashionState | undefined;
   if (!s) return;
   drop(s.hair.obj);
   drop(s.beard.obj);
+  drop(s.dress.obj);
   for (const obj of s.makeup.objs) drop(obj);
   for (const slot of Object.values(s.acc)) drop(slot?.obj ?? null);
   delete model.userData.fashion;

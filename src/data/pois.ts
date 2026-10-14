@@ -67,7 +67,11 @@ export const POIS: PoiDef[] = [
   },
   { id: 'marche-mokolo', name: 'Marché Mokolo', category: 'market', districtId: 'mokolo', position: { x: -420, z: -140 }, geoStatus: 'unverified' },
   { id: 'dovv', name: 'DOVV', category: 'shop', districtId: 'nlongkak', position: { x: 250, z: 90 }, geoStatus: 'unverified' },
-  { id: 'alpha-motors', name: 'Alpha Motors', category: 'shop', districtId: 'bastos', position: { x: 340, z: 280 }, geoStatus: 'unverified' },
+  { id: 'alpha-motors', name: 'Alpha Motors', category: 'shop', districtId: 'bastos', position: { x: 252, z: 324 }, geoStatus: 'provisional' },
+  { id: 'mercedes', name: 'Mercedes-Benz', category: 'shop', districtId: 'bastos', position: { x: 468, z: 324 }, geoStatus: 'provisional' },
+  { id: 'cami', name: 'Cami Auto', category: 'shop', districtId: 'nlongkak', position: { x: 180, z: 108 }, geoStatus: 'provisional' },
+  { id: 'abn', name: 'ABN Motors', category: 'shop', districtId: 'nlongkak', position: { x: 396, z: 36 }, geoStatus: 'provisional' },
+  { id: 'base-militaire', name: 'Base militaire BIR', category: 'government', districtId: 'emana', position: { x: -324, z: -828 }, geoStatus: 'provisional' },
   { id: 'uy1-ngoa', name: 'Université de Yaoundé I', category: 'education', districtId: 'ngoa-ekelle', position: { x: -160, z: -380 }, geoStatus: 'unverified' },
   {
     id: 'etoudi-palais',

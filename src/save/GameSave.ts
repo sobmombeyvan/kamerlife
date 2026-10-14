@@ -23,6 +23,8 @@ export type GameSaveData = {
   wardrobe?: SavedOutfit[];
   /** Fashion items bought with FCFA. Starter items are implied. */
   fashionOwned?: string[];
+  /** Dealership cars the player bought. */
+  ownedCars?: { sku: string; x: number; z: number; yaw: number }[];
   savedAt: number;
 };
 
@@ -64,6 +66,9 @@ export function loadGameSave(): GameSaveData | null {
       wardrobe: Array.isArray(data.wardrobe) ? (data.wardrobe as SavedOutfit[]) : undefined,
       fashionOwned: Array.isArray(data.fashionOwned)
         ? (data.fashionOwned as unknown[]).filter((id): id is string => typeof id === 'string')
+        : undefined,
+      ownedCars: Array.isArray(data.ownedCars)
+        ? (data.ownedCars as { sku: string; x: number; z: number; yaw: number }[])
         : undefined,
       savedAt: Number(data.savedAt ?? Date.now()),
     };
